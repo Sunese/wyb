@@ -1,0 +1,29 @@
+[project]
+name = "categorize"
+version = "0.1.0"
+description = "Add your description here"
+authors = [
+    { name = "Sune Engtorp", email = "suneengtorp@live.dk" }
+]
+requires-python = ">=3.13"
+dependencies = [
+    "fastapi>=0.136.1",
+    "opentelemetry-distro>=0.62b1",
+    "opentelemetry-exporter-otlp>=1.41.1",
+    "opentelemetry-instrumentation-fastapi>=0.62b1",
+    "opentelemetry-instrumentation-pika>=0.62b1",
+    "pika>=1.4.0",
+    "uvicorn[standard]>=0.46.0",
+]
+
+[project.scripts]
+categorize = "categorize:main"
+
+[build-system]
+requires = ["uv_build>=0.11.12,<0.12.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.3",
+]

@@ -1,0 +1,21 @@
+<Solution>
+  <Folder Name="/apphost/">
+    <Project Path="apphost/Wyb.AppHost.csproj" />
+  </Folder>
+  <Folder Name="/services/" />
+  <Folder Name="/services/ledger/" />
+  <Folder Name="/services/ledger/src/">
+    <Project Path="services/ledger/src/Wyb.Ledger.csproj" />
+  </Folder>
+  <Folder Name="/services/ledger/tests/">
+    <Project Path="services/ledger/tests/Wyb.Ledger.IntegrationTests/Wyb.Ledger.IntegrationTests.csproj" />
+    <Project Path="services/ledger/tests/Wyb.Ledger.Tests/Wyb.Ledger.Tests.csproj" />
+  </Folder>
+  <Folder Name="/shared/">
+    <Project Path="shared/Wyb.ServiceDefaults/Wyb.ServiceDefaults.csproj" />
+  </Folder>
+  <Folder Name="/tests/" />
+  <Folder Name="/tests/integration/">
+    <Project Path="tests/integration/Wyb.Integration.Tests.csproj" />
+  </Folder>
+</Solution>

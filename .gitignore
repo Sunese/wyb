@@ -1,0 +1,35 @@
+# .NET
+bin/
+obj/
+*.user
+*.suo
+.vs/
+
+# Go
+/services/ingest/ingest
+/services/ingest/*.exe
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+.uv-cache/
+*.egg-info/
+
+# Node
+node_modules/
+.svelte-kit/
+dist/
+build/
+.vite/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# app-specific
+drop/
+raw/
+testdata/

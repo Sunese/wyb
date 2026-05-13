@@ -1,0 +1,6 @@
+@Wyb.Ledger_HostAddress = http://localhost:5213
+
+GET {{Wyb.Ledger_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
