@@ -14,43 +14,43 @@ public class TransactionConsumer(IConnection rabbit, IServiceScopeFactory scopeF
         using var channel = await rabbit.CreateChannelAsync(cancellationToken: stoppingToken);
 
         await channel.ExchangeDeclareAsync(
-            exchange: "transaction.imported",
+            exchange: "transaction.categorized",
             type: ExchangeType.Fanout,
             durable: true,
             autoDelete: false,
             cancellationToken: stoppingToken);
 
         await channel.ExchangeDeclareAsync(
-            exchange: "transaction.imported.dlx",
+            exchange: "transaction.categorized.dlx",
             type: ExchangeType.Fanout,
             durable: true,
             autoDelete: false,
             cancellationToken: stoppingToken);
 
         await channel.QueueDeclareAsync(
-            queue: "ledger.transaction.imported.dlq",
+            queue: "ledger.transaction.categorized.dlq",
             durable: true,
             exclusive: false,
             autoDelete: false,
             cancellationToken: stoppingToken);
 
         await channel.QueueBindAsync(
-            queue: "ledger.transaction.imported.dlq",
-            exchange: "transaction.imported.dlx",
+            queue: "ledger.transaction.categorized.dlq",
+            exchange: "transaction.categorized.dlx",
             routingKey: "",
             cancellationToken: stoppingToken);
 
         await channel.QueueDeclareAsync(
-            queue: "ledger.transaction.imported",
+            queue: "ledger.transaction.categorized",
             durable: true,
             exclusive: false,
             autoDelete: false,
-            arguments: new Dictionary<string, object?> { ["x-dead-letter-exchange"] = "transaction.imported.dlx" },
+            arguments: new Dictionary<string, object?> { ["x-dead-letter-exchange"] = "transaction.categorized.dlx" },
             cancellationToken: stoppingToken);
 
         await channel.QueueBindAsync(
-            queue: "ledger.transaction.imported",
-            exchange: "transaction.imported",
+            queue: "ledger.transaction.categorized",
+            exchange: "transaction.categorized",
             routingKey: "",
             cancellationToken: stoppingToken);
 
@@ -59,7 +59,7 @@ public class TransactionConsumer(IConnection rabbit, IServiceScopeFactory scopeF
         {
             try
             {
-                var req = JsonSerializer.Deserialize<ImportTransactionRequest>(
+                var msg = JsonSerializer.Deserialize<ImportTransactionRequest>(
                     ea.Body.Span,
                     new JsonSerializerOptions
                     {
@@ -67,7 +67,7 @@ public class TransactionConsumer(IConnection rabbit, IServiceScopeFactory scopeF
                         PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
                     });
 
-                if (req is null)
+                if (msg is null)
                 {
                     logger.LogWarning("Received null or undeserializable message, discarding");
                     await channel.BasicAckAsync(ea.DeliveryTag, multiple: false);
@@ -77,24 +77,40 @@ public class TransactionConsumer(IConnection rabbit, IServiceScopeFactory scopeF
                 using var scope = scopeFactory.CreateScope();
                 var db = scope.ServiceProvider.GetRequiredService<LedgerDbContext>();
 
-                var dedupKey = DedupKey.Compute(req.AccountId, req.Date, req.AmountMinor, req.Currency, req.RawDescription);
+                var (dedupKey, hashInput) = DedupKey.Compute(msg.AccountId, msg.Date, msg.AmountMinor, msg.Currency, msg.RawDescription);
 
                 var exists = await db.Transactions.AnyAsync(t => t.DedupKey == dedupKey);
                 if (!exists)
                 {
+                    logger.LogInformation("Importing transaction. Input: {Input}", hashInput);
                     db.Transactions.Add(new Transaction
                     {
-                        Id = Guid.NewGuid(),
                         DedupKey = dedupKey,
-                        Date = req.Date,
-                        AmountMinor = req.AmountMinor,
-                        Currency = req.Currency,
-                        RawDescription = req.RawDescription,
-                        AccountId = req.AccountId,
+                        Date = msg.Date,
+                        AmountMinor = msg.AmountMinor,
+                        Currency = msg.Currency,
+                        RawDescription = msg.RawDescription,
+                        AccountId = msg.AccountId,
                         ImportedAt = DateTimeOffset.UtcNow,
-                        SchemaVersion = req.SchemaVersion,
+                        SchemaVersion = msg.SchemaVersion,
+                        Category = msg.Category,
                     });
                     await db.SaveChangesAsync();
+                }
+                else
+                {
+                    // we might have analyzed us to richer details, such as a new category
+                    var existing = await db.Transactions.FirstOrDefaultAsync(t => t.DedupKey == dedupKey);
+                    if (existing is not null && existing.Category != msg.Category)
+                    {
+                        logger.LogInformation("Updating transaction category from {OldCategory} to {NewCategory}. Input: {Input}", existing.Category, msg.Category, hashInput);
+                        existing.Category = msg.Category;
+                        await db.SaveChangesAsync();
+                    }
+                    else
+                    {
+                        logger.LogInformation("Transaction already exists with same category, skipping. Input: {Input}", hashInput);
+                    }
                 }
 
                 await channel.BasicAckAsync(ea.DeliveryTag, multiple: false);
@@ -107,7 +123,7 @@ public class TransactionConsumer(IConnection rabbit, IServiceScopeFactory scopeF
         };
 
         await channel.BasicConsumeAsync(
-            queue: "ledger.transaction.imported",
+            queue: "ledger.transaction.categorized",
             autoAck: false,
             consumer: consumer,
             cancellationToken: stoppingToken);

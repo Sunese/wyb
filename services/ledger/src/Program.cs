@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Microsoft.EntityFrameworkCore;
 using RabbitMQ.Client;
 using Wyb.Ledger;
@@ -25,7 +26,7 @@ app.MapDefaultEndpoints();
 
 app.MapPost("/transactions", async (ImportTransactionRequest req, LedgerDbContext db) =>
 {
-    var dedupKey = DedupKey.Compute(req.AccountId, req.Date, req.AmountMinor, req.Currency, req.RawDescription);
+    var (dedupKey, hashInput) = DedupKey.Compute(req.AccountId, req.Date, req.AmountMinor, req.Currency, req.RawDescription);
 
     var existing = await db.Transactions.FirstOrDefaultAsync(t => t.DedupKey == dedupKey);
     if (existing is not null)
@@ -33,7 +34,6 @@ app.MapPost("/transactions", async (ImportTransactionRequest req, LedgerDbContex
 
     var transaction = new Transaction
     {
-        Id = Guid.NewGuid(),
         DedupKey = dedupKey,
         Date = req.Date,
         AmountMinor = req.AmountMinor,
@@ -42,6 +42,7 @@ app.MapPost("/transactions", async (ImportTransactionRequest req, LedgerDbContex
         AccountId = req.AccountId,
         ImportedAt = DateTimeOffset.UtcNow,
         SchemaVersion = req.SchemaVersion,
+        Category = req.Category,
     };
 
     db.Transactions.Add(transaction);
@@ -78,4 +79,16 @@ record ImportTransactionRequest(
     long AmountMinor,
     string Currency,
     string RawDescription,
-    int SchemaVersion = 1);
+    int SchemaVersion = 1,
+    TransactionCategory Category = TransactionCategory.Uncategorized);
+
+[JsonConverter(typeof(JsonStringEnumConverter))]
+public enum TransactionCategory
+{
+    Uncategorized,
+    Income,
+    Expense,
+    Transfer,
+    Investment,
+    Beer
+}

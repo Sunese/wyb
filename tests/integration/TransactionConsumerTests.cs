@@ -1,5 +1,6 @@
 using System.Text;
 using Aspire.Hosting;
+using Aspire.Hosting.ApplicationModel;
 using Aspire.Hosting.Testing;
 using RabbitMQ.Client;
 
@@ -12,8 +13,11 @@ public class TransactionConsumerTests : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
-        var appHost = await DistributedApplicationTestingBuilder.CreateAsync<Projects.Wyb_AppHost>();
-        _app = await appHost.BuildAsync();
+        var appHost = await DistributedApplicationTestingBuilder
+            .CreateAsync<Projects.Wyb_AppHost>();
+        _app = await appHost
+                .WithContainersLifetime(ContainerLifetime.Session) // Use session lifetime for tests to ensure clean state on each run.
+                .BuildAsync();
         await _app.StartAsync();
 
         await _app.ResourceNotifications

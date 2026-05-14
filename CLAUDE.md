@@ -8,11 +8,9 @@ WYB is a self-hosted personal finance monitoring app — "Grafana for your bank 
 
 ## Running
 
-```bash
-cd apphost && aspire run
-```
+Always consult relevant Aspire skills and MCP servers on how to start the Aspire host etc.
 
-Dashboard URL is printed. All services should go green. Postgres and RabbitMQ use persistent volumes.
+To trigger a series of transaction-imported events, copy the "testdata/danskebank_salary_20250101_20251231.csv" file to the "drop" folder.
 
 ## Test commands
 
@@ -28,8 +26,7 @@ dotnet test tests/integration
 go test ./services/ingest/...
 
 # Python
-uv run --directory services/categorize pytest
-uv run --directory services/detect pytest
+# TODO
 
 # SvelteKit — run in this order for web changes
 cd services/web
@@ -90,13 +87,74 @@ Available skills: `aspire`, `aspireify`, `dotnet-inspect`, `playwright-cli`.
 
 One feature per branch, named `m<milestone>/<short-desc>` (e.g. `m1/ledger-ef-core`). Merge sequentially so each branch can verify against working upstream services.
 
-## Current milestone (M1)
+## Current milestone (M2)
 
-Goal: drop a CSV from a Danish bank into `drop/`, see normalized transactions in ledger, browsable from web.
+Goal: Categorization (rules + manual) + merchant resolution
 
-Three branches in order:
-1. `m1/ledger-ef-core` — EF Core + Postgres + transaction endpoints + RabbitMQ consumer
-2. `m1/ingest-csv` — fsnotify + real CSV parsing, publishes to RabbitMQ, archives raw to `raw/`
-3. `m1/web-transactions-table` — server-side load from ledger, table with date/description/amount
+For more details on the roadmap, read the [roadmap](./roadmap.md)
 
-`drop/` and `raw/` directories at repo root are gitignored (bind-mounted into the ingest container).
+## Sync philosophy
+
+CSV/XLSX import from the user's bank is the primary, blessed sync path
+and stays that way forever. Reasons, in order of importance:
+
+	1.	No regulatory exposure ever. CSV imports are not PSD2-regulated,
+	    so WYB never has to become an AISP, never has to deal with
+	    Finanstilsynet, and never has to operate as an agent of a licensed
+	    AISP. This is true regardless of how many users WYB has or
+	    whether they self-host or use a hosted instance.
+	2.	No third-party dependency for the core experience. WYB does not
+	    depend on Enable Banking, GoCardless/Nordigen, Tink, or any
+	    similar provider for the default sync path. GoCardless killed
+	    their free hobbyist tier for new users in 2025; relying on
+	    Enable Banking's restricted-mode terms continuing as-is would
+	    leave WYB one ToS change away from being broken.
+	3.	The thesis is periodic, not real-time. Anomaly detection on
+	    personal spending is a weekly-to-monthly question. The data does
+	    not need to be live; it needs to be reasonably current.
+	4.	Danish banks have decent CSV/XLSX exports. Danske Bank, Nordea,
+	    Jyske, Sydbank, Lunar, and Revolut all expose usable exports
+	    with meaningful merchant text. The friction tax is real but
+	    bounded.
+
+Optional power-user path: Enable Banking restricted-mode auto-sync, for
+users who want auto-sync and are willing to register their own Enable
+Banking application and link their own accounts to it. Documented as
+advanced and opt-in. Because each user uses their own Enable Banking app
+under their own consent, this stays inside Enable Banking's
+"individual non-commercial use" allowance even when other people use
+instances of WYB the original author packaged.
+
+Conventions for sync UX
+	- Import lag is the enemy. The UI must aggressively surface "you
+	    haven't imported in N days" nudges so the periodic ingest
+	    cadence stays healthy.
+	- Missing-expected-charge detection (M3/M4) must reason about import
+	    lag. Don't flag Netflix as missing just because the user hasn't
+	    imported in two weeks.
+	- Per-bank parser quirks are inevitable. Treat parsers as plugins,
+	    not core code, and version them.
+
+
+## Notes for the next agent
+- Resist scope creep into budgeting features. The thesis is anomaly
+    detection; staying weird where weird is the whole point.
+- Resist scope creep into "real-time everything." Periodic is fine.
+    The product's job is to tell the user when something matters,
+    not to be a dashboard they stare at.
+- Don't normalize merchant strings in M2 by hand-coding rules
+    forever — design the rule engine and alias table now so it
+    grows.
+- Treat bank CSV parsers as a plugin surface from day one. New
+    banks will show up; existing banks will change their formats.
+- The user is the only user for the foreseeable future; design for
+    that, but keep multi-user in mind for the schema.
+- Do not pursue an AISP license, do not become an agent of a
+    licensed AISP, do not register WYB as a service operator with
+    Finanstilsynet. If WYB ever grows into something that would
+    require any of those, that's a strategic decision for a future
+    version of the project, not a technical task to add to the
+    roadmap.
+- For decisions on libraries/services, prefer boring infrastructure
+    (Postgres, RabbitMQ, Docker volumes) and save novelty budget for
+    application logic.
