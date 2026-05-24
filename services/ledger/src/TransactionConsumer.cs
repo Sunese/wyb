@@ -79,8 +79,8 @@ public class TransactionConsumer(IConnection rabbit, IServiceScopeFactory scopeF
 
                 var (dedupKey, hashInput) = DedupKey.Compute(msg.AccountId, msg.Date, msg.AmountMinor, msg.Currency, msg.RawDescription);
 
-                var exists = await db.Transactions.AnyAsync(t => t.DedupKey == dedupKey);
-                if (!exists)
+                var existing = await db.Transactions.FirstOrDefaultAsync(t => t.DedupKey == dedupKey);
+                if (existing is null)
                 {
                     logger.LogInformation("Importing transaction. Input: {Input}", hashInput);
                     db.Transactions.Add(new Transaction
@@ -94,23 +94,22 @@ public class TransactionConsumer(IConnection rabbit, IServiceScopeFactory scopeF
                         ImportedAt = DateTimeOffset.UtcNow,
                         SchemaVersion = msg.SchemaVersion,
                         Category = msg.Category,
+                        MerchantName = msg.MerchantName,
                     });
+                    await db.SaveChangesAsync();
+                }
+                else if (!existing.CategoryOverridden &&
+                         (existing.Category != msg.Category || existing.MerchantName != msg.MerchantName))
+                {
+                    logger.LogInformation(
+                        "Updating transaction category/merchant. Input: {Input}", hashInput);
+                    existing.Category = msg.Category;
+                    existing.MerchantName = msg.MerchantName;
                     await db.SaveChangesAsync();
                 }
                 else
                 {
-                    // we might have analyzed us to richer details, such as a new category
-                    var existing = await db.Transactions.FirstOrDefaultAsync(t => t.DedupKey == dedupKey);
-                    if (existing is not null && existing.Category != msg.Category)
-                    {
-                        logger.LogInformation("Updating transaction category from {OldCategory} to {NewCategory}. Input: {Input}", existing.Category, msg.Category, hashInput);
-                        existing.Category = msg.Category;
-                        await db.SaveChangesAsync();
-                    }
-                    else
-                    {
-                        logger.LogInformation("Transaction already exists with same category, skipping. Input: {Input}", hashInput);
-                    }
+                    logger.LogInformation("Transaction already up to date, skipping. Input: {Input}", hashInput);
                 }
 
                 await channel.BasicAckAsync(ea.DeliveryTag, multiple: false);

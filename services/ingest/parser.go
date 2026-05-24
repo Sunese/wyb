@@ -8,6 +8,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -15,6 +16,10 @@ import (
 
 	"golang.org/x/text/encoding/charmap"
 )
+
+// archivedPrefix matches the timestamp prepended when a drop file is archived to raw/.
+// Format: YYYYMMDDTHHMMSSZ_ e.g. "20260514T155959Z_"
+var archivedPrefix = regexp.MustCompile(`^\d{8}T\d{6}Z_`)
 
 // Row is the normalised output of any bank parser.
 type Row struct {
@@ -27,67 +32,29 @@ type Row struct {
 	RowIndex    int
 }
 
-// DropFilename is a parsed representation of the required drop filename convention.
-// Format: bankName_accountName_fromDate_toDate.csv
-// Example: danskebank_salary_20250101_20251231.csv
-type DropFilename struct {
-	BankName    string // e.g. "danskebank"
-	AccountName string // user-defined label, e.g. "salary" — must be stable across exports
-	AccountID   string // bankName_accountName — used as the dedup account identifier
-}
-
-func parseDropFilename(name string) (DropFilename, error) {
-	base := strings.TrimSuffix(name, filepath.Ext(name))
-	parts := strings.SplitN(base, "_", 3) // at most 3: bankName, accountName, rest
-	if len(parts) < 2 {
-		return DropFilename{}, fmt.Errorf(
-			"filename %q does not match expected format: bankName_accountName_fromDate_toDate.csv",
-			name,
-		)
-	}
-	bank := strings.ToLower(strings.TrimSpace(parts[0]))
-	account := strings.ToLower(strings.TrimSpace(parts[1]))
-	if bank == "" || account == "" {
-		return DropFilename{}, fmt.Errorf("filename %q: bankName and accountName must not be empty", name)
-	}
-	return DropFilename{
-		BankName:    bank,
-		AccountName: account,
-		AccountID:   bank + "_" + account,
-	}, nil
-}
-
 // BankParser parses a specific bank's CSV export.
 type BankParser interface {
-	// BankName returns the canonical lowercase bank identifier used in filenames.
+	// BankName returns the canonical lowercase bank identifier.
 	BankName() string
-	// DetectHeader sanity-checks that the file header matches expectations.
+	// DetectHeader returns true if the header row matches this bank's format.
 	// Headers are already decoded to UTF-8 and trimmed of whitespace.
 	DetectHeader(header []string) bool
 	// Parse reads all data rows from r and returns normalised rows.
 	Parse(r io.Reader, sourceName, accountID string) ([]Row, error)
 }
 
-// registry maps lowercase bank name → parser.
-var registry = map[string]BankParser{
-	"danskebank": &danskeParser{},
+// registry holds all registered bank parsers.
+var registry = []BankParser{
+	&danskeParser{},
 }
 
-// ParseFile parses path using the filename convention to identify the bank and account.
+// ParseFile auto-detects the bank format from file content and parses the file.
+// The account ID is derived from the filename stem — users name their files
+// consistently (e.g. "salary.csv") so the ID is stable across imports.
+// Archived files (prefixed with a timestamp by the watcher) are handled transparently.
 func ParseFile(path string) ([]Row, error) {
-	meta, err := parseDropFilename(filepath.Base(path))
-	if err != nil {
-		return nil, err
-	}
-
-	parser, ok := registry[meta.BankName]
-	if !ok {
-		supported := make([]string, 0, len(registry))
-		for k := range registry {
-			supported = append(supported, k)
-		}
-		return nil, fmt.Errorf("unsupported bank %q (supported: %s)", meta.BankName, strings.Join(supported, ", "))
-	}
+	base := archivedPrefix.ReplaceAllString(filepath.Base(path), "")
+	accountID := strings.TrimSuffix(base, filepath.Ext(base))
 
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -104,15 +71,27 @@ func ParseFile(path string) ([]Row, error) {
 		return nil, fmt.Errorf("sniff header: %w", err)
 	}
 
-	if !parser.DetectHeader(header) {
-		return nil, fmt.Errorf("file header does not match expected %s format", parser.BankName())
+	parser := detectParser(header)
+	if parser == nil {
+		return nil, fmt.Errorf("unrecognised file format: no registered bank parser matched the header")
 	}
 
-	rows, err := parser.Parse(bytes.NewReader(decoded), filepath.Base(path), meta.AccountID)
+	rows, err := parser.Parse(bytes.NewReader(decoded), filepath.Base(path), accountID)
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", parser.BankName(), err)
 	}
 	return rows, nil
+}
+
+// detectParser returns the first registered parser whose DetectHeader matches,
+// or nil if none match.
+func detectParser(header []string) BankParser {
+	for _, p := range registry {
+		if p.DetectHeader(header) {
+			return p
+		}
+	}
+	return nil
 }
 
 // decodeToUTF8 detects and converts the byte slice to UTF-8.

@@ -1,4 +1,4 @@
-<Project Sdk="Aspire.AppHost.Sdk/13.3.2">
+<Project Sdk="Aspire.AppHost.Sdk/13.3.5">
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
@@ -6,15 +6,17 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <UserSecretsId>6b6b0fe4-6705-4898-85ca-17f25fd8c8f2</UserSecretsId>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Aspire.Hosting.Docker" Version="13.3.2" />
-    <PackageReference Include="Aspire.Hosting.JavaScript" Version="13.3.2" />
-    <PackageReference Include="Aspire.Hosting.PostgreSQL" Version="13.3.2" />
-    <PackageReference Include="Aspire.Hosting.Python" Version="13.3.2" />
-    <PackageReference Include="Aspire.Hosting.RabbitMQ" Version="13.3.2" />
+    <PackageReference Include="Aspire.Hosting.Docker" Version="13.3.5" />
+    <PackageReference Include="Aspire.Hosting.JavaScript" Version="13.3.5" />
+    <PackageReference Include="Aspire.Hosting.PostgreSQL" Version="13.3.5" />
+    <PackageReference Include="Aspire.Hosting.Python" Version="13.3.5" />
+    <PackageReference Include="Aspire.Hosting.RabbitMQ" Version="13.3.5" />
     <PackageReference Include="CommunityToolkit.Aspire.Hosting.Golang" Version="13.1.1" />
+    <PackageReference Include="CommunityToolkit.Aspire.Hosting.SQLite" Version="13.1.1" />
   </ItemGroup>
 
   <ItemGroup>

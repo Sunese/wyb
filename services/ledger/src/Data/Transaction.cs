@@ -16,4 +16,15 @@ public class Transaction
     /// Optional account ID. Not necessarily known, therefore nullable.
     /// </summary>
     public string? AccountId { get; init; }
+
+    /// <summary>
+    /// Resolved canonical merchant name, e.g. "MENY" for "MENY VESTERBRO 1234".
+    /// Null when no alias matches.
+    /// </summary>
+    public string? MerchantName { get; set; }
+
+    /// <summary>
+    /// When true, retroactive recategorization will not overwrite this transaction's category.
+    /// </summary>
+    public bool CategoryOverridden { get; set; }
 }

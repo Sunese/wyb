@@ -34,3 +34,6 @@ build/
 drop/
 raw/
 testdata/
+
+# claude
+.claude/worktrees/

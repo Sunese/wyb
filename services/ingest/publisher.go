@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 	"time"
 
@@ -21,6 +22,11 @@ type TransactionImportedEvent struct {
 	AmountMinor    int64  `json:"amount_minor"`
 	Currency       string `json:"currency"`
 	RawDescription string `json:"raw_description"`
+}
+
+// eventPublisher is the interface the replay handler depends on — lets tests inject a mock.
+type eventPublisher interface {
+	Publish(ctx context.Context, event TransactionImportedEvent) error
 }
 
 type Publisher struct {
@@ -60,8 +66,13 @@ func newPublisher() (*Publisher, error) {
 	returns := ch.NotifyReturn(make(chan amqp.Return, 16))
 	go func() {
 		for r := range returns {
-			fmt.Printf("WARNING: unroutable message returned (%d %s) exchange=%s routing_key=%s message_id=%s\n",
-				r.ReplyCode, r.ReplyText, r.Exchange, r.RoutingKey, r.MessageId)
+			slog.Warn("unroutable message returned",
+				"reply_code", r.ReplyCode,
+				"reply_text", r.ReplyText,
+				"exchange", r.Exchange,
+				"routing_key", r.RoutingKey,
+				"message_id", r.MessageId,
+			)
 		}
 	}()
 

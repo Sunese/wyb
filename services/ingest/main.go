@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -17,9 +18,9 @@ func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
-	shutdown, err := initTracer(ctx)
+	shutdown, err := initTelemetry(ctx)
 	if err != nil {
-		fmt.Printf("failed to init tracer: %v\n", err)
+		slog.Error("failed to init telemetry", "err", err)
 		os.Exit(1)
 	}
 	defer func() {
@@ -44,19 +45,19 @@ func main() {
 
 	dropDir := os.Getenv("DROP_DIR")
 	if dropDir == "" {
-		fmt.Printf("DROP_DIR environment variable is required")
+		slog.Error("DROP_DIR environment variable is required")
 		os.Exit(1)
 	}
 
 	rawDir := os.Getenv("RAW_DIR")
 	if rawDir == "" {
-		fmt.Printf("RAW_DIR environment variable is required")
+		slog.Error("RAW_DIR environment variable is required")
 		os.Exit(1)
 	}
 
 	pub, err := newPublisher()
 	if err != nil {
-		fmt.Printf("failed to connect to RabbitMQ: %v\n", err)
+		slog.Error("failed to connect to RabbitMQ", "err", err)
 		os.Exit(1)
 	}
 	defer pub.Close()
@@ -81,18 +82,20 @@ func main() {
 				return fmt.Errorf("publish row %d: %w", row.RowIndex, err)
 			}
 		}
-		fmt.Printf("published %d transactions from %s\n", len(rows), rows[0].SourceFile)
+		slog.InfoContext(ctx, "published transactions", "count", len(rows), "source_file", rows[0].SourceFile)
 		return nil
 	}
 
+	mux.Handle("POST /replay", replayHandler(rawDir, pub, tracer))
+
 	if err := startWatcher(ctx, dropDir, rawDir, processFile); err != nil {
-		fmt.Printf("failed to start watcher: %v\n", err)
+		slog.Error("failed to start watcher", "err", err)
 		os.Exit(1)
 	}
 
 	port := os.Getenv("PORT")
 	if port == "" {
-		fmt.Printf("PORT environment variable is not set, defaulting to 8080")
+		slog.Warn("PORT environment variable is not set, defaulting to 8080")
 		port = "8080"
 	}
 
@@ -106,9 +109,9 @@ func main() {
 	}
 
 	go func() {
-		fmt.Printf("ingest listening on :%s\n", port)
+		slog.Info("ingest listening", "port", port)
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			fmt.Printf("server error: %v\n", err)
+			slog.Error("server error", "err", err)
 		}
 	}()
 

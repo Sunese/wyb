@@ -12,6 +12,8 @@ builder.AddServiceDefaults();
 builder.AddRabbitMQClient(connectionName: "rabbit");
 builder.AddNpgsqlDbContext<LedgerDbContext>("ledger-db");
 builder.Services.AddHostedService<TransactionConsumer>();
+builder.Services.ConfigureHttpJsonOptions(opts =>
+    opts.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 
 var app = builder.Build();
 
@@ -23,6 +25,8 @@ if (app.Environment.IsDevelopment())
 }
 
 app.MapDefaultEndpoints();
+
+// ── Transactions ──────────────────────────────────────────────────────────────
 
 app.MapPost("/transactions", async (ImportTransactionRequest req, LedgerDbContext db) =>
 {
@@ -43,6 +47,7 @@ app.MapPost("/transactions", async (ImportTransactionRequest req, LedgerDbContex
         ImportedAt = DateTimeOffset.UtcNow,
         SchemaVersion = req.SchemaVersion,
         Category = req.Category,
+        MerchantName = req.MerchantName,
     };
 
     db.Transactions.Add(transaction);
@@ -71,7 +76,24 @@ app.MapGet("/transactions", async (
     return Results.Ok(transactions);
 });
 
+app.MapPatch("/transactions/{id:guid}/category", async (
+    Guid id,
+    PatchCategoryRequest req,
+    LedgerDbContext db) =>
+{
+    var tx = await db.Transactions.FindAsync(id);
+    if (tx is null) return Results.NotFound();
+
+    tx.Category = req.Category;
+    tx.CategoryOverridden = true;
+    await db.SaveChangesAsync();
+    return Results.Ok(tx);
+});
+
+
 app.Run();
+
+// ── Request / response records ────────────────────────────────────────────────
 
 record ImportTransactionRequest(
     string AccountId,
@@ -80,7 +102,10 @@ record ImportTransactionRequest(
     string Currency,
     string RawDescription,
     int SchemaVersion = 1,
-    TransactionCategory Category = TransactionCategory.Uncategorized);
+    TransactionCategory Category = TransactionCategory.Uncategorized,
+    string? MerchantName = null);
+
+record PatchCategoryRequest(TransactionCategory Category);
 
 [JsonConverter(typeof(JsonStringEnumConverter))]
 public enum TransactionCategory
@@ -90,5 +115,15 @@ public enum TransactionCategory
     Expense,
     Transfer,
     Investment,
-    Beer
+    Beer,
+    Groceries,
+    Dining,
+    Transport,
+    Shopping,
+    Entertainment,
+    Utilities,
+    Housing,
+    Healthcare,
+    Subscriptions,
+    ATM,
 }

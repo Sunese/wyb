@@ -50,8 +50,13 @@ var ingest = builder.AddGolangApp("ingest", "../services/ingest")
     .WithEnvironment("RAW_DIR", "../../raw");
 
 // Python services
-builder.AddPythonApp("categorize", "../services/categorize", "src/main.py")
-    // .WithVirtualEnvironment("../.venv")
+var categorizeDb = builder.AddSqlite("categorize-db")
+    .WithSqliteWeb();
+
+var categorize = builder.AddUvicornApp("categorize", "../services/categorize", "categorize.main:app")
+    .WithUv()
+    .WithHttpEndpoint(env: "PORT")
+    .WithReference(categorizeDb)
     .WithReference(rabbit)
     .WaitFor(rabbit)
     .WithEnvironment("PYTHONUNBUFFERED", "1");
@@ -64,6 +69,7 @@ builder.AddUvicornApp("detect", "../services/detect", "detect.main:app")
 // SvelteKit frontend
 builder.AddViteApp("web", "../services/web")
     .WithReference(ledger)
+    .WithReference(categorize)
     .WaitFor(ledger)
     .WithEnvironment("NODE_OPTIONS", "--import ./otel.js");
 

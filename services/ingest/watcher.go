@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"time"
@@ -43,14 +44,14 @@ func startWatcher(ctx context.Context, dropDir, rawDir string, process func(ctx 
 					// Give the writer a moment to finish before we read.
 					time.Sleep(200 * time.Millisecond)
 					if err := handleFile(ctx, event.Name, rawDir, process); err != nil {
-						fmt.Printf("error handling %s: %v\n", filepath.Base(event.Name), err)
+						slog.ErrorContext(ctx, "error handling file", "file", filepath.Base(event.Name), "err", err)
 					}
 				}
 			case err, ok := <-watcher.Errors:
 				if !ok {
 					return
 				}
-				fmt.Printf("watcher error: %v\n", err)
+				slog.ErrorContext(ctx, "watcher error", "err", err)
 			}
 		}
 	}()
@@ -59,7 +60,7 @@ func startWatcher(ctx context.Context, dropDir, rawDir string, process func(ctx 
 		return fmt.Errorf("watch %s: %w", dropDir, err)
 	}
 
-	fmt.Printf("watching %s\n", dropDir)
+	slog.Info("watching drop directory", "dir", dropDir)
 	return nil
 }
 
@@ -78,7 +79,7 @@ func processExisting(ctx context.Context, dropDir, rawDir string, process func(c
 		}
 		path := filepath.Join(dropDir, entry.Name())
 		if err := handleFile(ctx, path, rawDir, process); err != nil {
-			fmt.Printf("error handling existing file %s: %v\n", entry.Name(), err)
+			slog.ErrorContext(ctx, "error handling existing file", "file", entry.Name(), "err", err)
 		}
 	}
 	return nil
@@ -103,6 +104,6 @@ func handleFile(ctx context.Context, path, rawDir string, process func(ctx conte
 		return fmt.Errorf("archive to %s: %w", dest, err)
 	}
 
-	fmt.Printf("archived %s → %s\n", filepath.Base(path), filepath.Base(dest))
+	slog.InfoContext(ctx, "archived file", "src", filepath.Base(path), "dest", filepath.Base(dest))
 	return nil
 }
