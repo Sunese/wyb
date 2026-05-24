@@ -1,4 +1,5 @@
 # .NET
+*.lscache
 bin/
 obj/
 *.user
