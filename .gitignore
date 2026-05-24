@@ -38,3 +38,6 @@ testdata/
 
 # claude
 .claude/worktrees/
+
+# docker sandbox (sbx)
+.sbx/
