@@ -1,0 +1,28 @@
+{
+    "folders": [
+        {
+            "path": "apphost"
+        },
+        {
+            "path": "services/categorize"
+        },
+        {
+            "path": "services/detect"
+        },
+        {
+            "path": "services/rules"
+        },
+        {
+            "path": "services/web"
+        },
+        {
+            "path": "services/ingest"
+        },
+        {
+            "path": "."
+        }
+    ],
+    "settings": {
+        "python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python"
+    }
+}

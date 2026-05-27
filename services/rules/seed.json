@@ -1,0 +1,30 @@
+{
+  "rules": [
+    { "name": "MobilePay",         "pattern": "MobilePay",        "matchType": "Contains",    "category": "Transfer",       "priority": 10 },
+    { "name": "Fra Danske Indlån", "pattern": "Fra Danske Indlån","matchType": "StartsWith",  "category": "Transfer",       "priority": 10 },
+    { "name": "Rejsekort",         "pattern": "Rejsekort",        "matchType": "Contains",    "category": "Transport",      "priority": 20 },
+    { "name": "EasyPark",          "pattern": "EasyPark",         "matchType": "Contains",    "category": "Transport",      "priority": 20 },
+    { "name": "GreenMobility",     "pattern": "GreenMobility",    "matchType": "Contains",    "category": "Transport",      "priority": 20 },
+    { "name": "Fitness World",     "pattern": "fitnessworldas",   "matchType": "Contains",    "category": "Health",         "priority": 30 },
+    { "name": "Claude.ai",         "pattern": "Claude.Ai",        "matchType": "Contains",    "category": "Subscriptions",  "priority": 30 },
+    { "name": "Booking.com",       "pattern": "Booking.Com",      "matchType": "Contains",    "category": "Travel",         "priority": 30 },
+    { "name": "7-Eleven",          "pattern": "7-Eleven",         "matchType": "StartsWith",  "category": "Groceries",      "priority": 30 }
+  ],
+  "merchants": [
+    {
+      "canonicalName": "Rema 1000",
+      "defaultCategory": "Groceries",
+      "aliases": [{ "pattern": "Rema 1000", "matchType": "StartsWith" }]
+    },
+    {
+      "canonicalName": "Bauhaus",
+      "defaultCategory": "Home",
+      "aliases": [{ "pattern": "Bauhaus", "matchType": "StartsWith" }]
+    },
+    {
+      "canonicalName": "Thansen",
+      "defaultCategory": "Auto",
+      "aliases": [{ "pattern": "Thansen", "matchType": "Contains" }]
+    }
+  ]
+}
