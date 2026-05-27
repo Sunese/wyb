@@ -5,25 +5,6 @@
 
 	let { data }: { data: PageData } = $props();
 
-	const CATEGORIES = [
-		'Uncategorized',
-		'Income',
-		'Expense',
-		'Transfer',
-		'Investment',
-		'Beer',
-		'Groceries',
-		'Dining',
-		'Transport',
-		'Shopping',
-		'Entertainment',
-		'Utilities',
-		'Housing',
-		'Healthcare',
-		'Subscriptions',
-		'ATM',
-	];
-
 	const CATEGORY_COLORS: Record<string, string> = {
 		Income: 'bg-green-100 text-green-800',
 		Groceries: 'bg-lime-100 text-lime-800',
@@ -33,7 +14,10 @@
 		Entertainment: 'bg-pink-100 text-pink-800',
 		Utilities: 'bg-cyan-100 text-cyan-800',
 		Housing: 'bg-stone-100 text-stone-800',
-		Healthcare: 'bg-red-100 text-red-800',
+		Health: 'bg-red-100 text-red-800',
+		Home: 'bg-rose-100 text-rose-800',
+		Auto: 'bg-sky-100 text-sky-800',
+		Travel: 'bg-violet-100 text-violet-800',
 		Subscriptions: 'bg-indigo-100 text-indigo-800',
 		Transfer: 'bg-gray-100 text-gray-700',
 		Investment: 'bg-emerald-100 text-emerald-800',
@@ -116,7 +100,7 @@
 										onchange={(e) => (e.currentTarget.form as HTMLFormElement)?.requestSubmit()}
 										onblur={() => (editingId = null)}
 									>
-										{#each CATEGORIES as cat}
+										{#each data.categories as cat}
 											<option value={cat} selected={cat === tx.category}>{cat}</option>
 										{/each}
 									</select>

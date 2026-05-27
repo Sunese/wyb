@@ -76,6 +76,9 @@ app.MapGet("/transactions", async (
     return Results.Ok(transactions);
 });
 
+app.MapGet("/categories", () =>
+    Results.Ok(Enum.GetNames<TransactionCategory>()));
+
 app.MapPatch("/transactions/{id:guid}/category", async (
     Guid id,
     PatchCategoryRequest req,

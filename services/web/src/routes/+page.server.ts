@@ -23,12 +23,18 @@ function ledgerUrl() {
 export const load: PageServerLoad = async ({ url }) => {
 	const limit = url.searchParams.get('limit') ?? '100';
 	const offset = url.searchParams.get('offset') ?? '0';
+	const base = ledgerUrl();
 
-	const res = await fetch(`${ledgerUrl()}/transactions?limit=${limit}&offset=${offset}`);
-	if (!res.ok) error(res.status, 'failed to fetch transactions from ledger');
+	const [txRes, catRes] = await Promise.all([
+		fetch(`${base}/transactions?limit=${limit}&offset=${offset}`),
+		fetch(`${base}/categories`)
+	]);
+	if (!txRes.ok) error(txRes.status, 'failed to fetch transactions from ledger');
+	if (!catRes.ok) error(catRes.status, 'failed to fetch categories from ledger');
 
-	const transactions: Transaction[] = await res.json();
-	return { transactions };
+	const transactions: Transaction[] = await txRes.json();
+	const categories: string[] = await catRes.json();
+	return { transactions, categories };
 };
 
 export const actions: Actions = {
