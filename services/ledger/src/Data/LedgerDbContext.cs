@@ -11,6 +11,7 @@ public class LedgerDbContext(DbContextOptions<LedgerDbContext> options) : DbCont
         modelBuilder.Entity<Transaction>(e =>
         {
             e.HasIndex(t => t.DedupKey).IsUnique();
+            e.Property(t => t.Category).HasConversion<string>();
         });
     }
 }

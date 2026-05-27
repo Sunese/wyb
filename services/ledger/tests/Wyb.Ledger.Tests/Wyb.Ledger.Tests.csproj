@@ -22,4 +22,11 @@
     <ProjectReference Include="..\..\src\Wyb.Ledger.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Content Include="..\..\..\..\shared\categories.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Link>categories.json</Link>
+    </Content>
+  </ItemGroup>
+
 </Project>

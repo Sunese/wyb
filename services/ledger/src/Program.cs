@@ -123,7 +123,10 @@ public enum TransactionCategory
     Entertainment,
     Utilities,
     Housing,
-    Healthcare,
+    Health,
+    Home,
+    Auto,
     Subscriptions,
     ATM,
+    Travel,
 }
