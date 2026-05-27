@@ -44,21 +44,29 @@ var ledger = builder.AddProject<Projects.Wyb_Ledger>("ledger")
 // Go service: ingest
 var ingest = builder.AddGolangApp("ingest", "../services/ingest")
     .WithHttpEndpoint(env: "PORT")
+    .WithOtlpExporter()
     .WithReference(rabbit)
     .WaitFor(rabbit)
-    .WithEnvironment("DROP_DIR", "../../drop")
-    .WithEnvironment("RAW_DIR", "../../raw");
+    .WithEnvironment("DROP_DIR", "../../sample-data/drop")
+    .WithEnvironment("RAW_DIR", "../../sample-data/raw");
 
 // Python services
-var categorizeDb = builder.AddSqlite("categorize-db")
+var rulesDb = builder.AddSqlite("rules-db")
     .WithSqliteWeb();
+
+var rules = builder.AddUvicornApp("rules", "../services/rules", "rules.main:app")
+    .WithUv()
+    .WithHttpEndpoint(env: "PORT")
+    .WithReference(rulesDb)
+    .WithEnvironment("PYTHONUNBUFFERED", "1");
 
 var categorize = builder.AddUvicornApp("categorize", "../services/categorize", "categorize.main:app")
     .WithUv()
     .WithHttpEndpoint(env: "PORT")
-    .WithReference(categorizeDb)
     .WithReference(rabbit)
+    .WithReference(rules)
     .WaitFor(rabbit)
+    .WaitFor(rules)
     .WithEnvironment("PYTHONUNBUFFERED", "1");
 
 builder.AddUvicornApp("detect", "../services/detect", "detect.main:app")
@@ -69,7 +77,7 @@ builder.AddUvicornApp("detect", "../services/detect", "detect.main:app")
 // SvelteKit frontend
 builder.AddViteApp("web", "../services/web")
     .WithReference(ledger)
-    .WithReference(categorize)
+    .WithReference(rules)
     .WaitFor(ledger)
     .WithEnvironment("NODE_OPTIONS", "--import ./otel.js");
 
