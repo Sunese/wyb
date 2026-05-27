@@ -27,6 +27,18 @@ Polyglot by design — each service uses the language that fits the job:
 
 Orchestrated with Aspire in dev, Postgres + RabbitMQ for state and events, OpenTelemetry traces across every service.
 
+## Observability
+
+Every service emits OpenTelemetry traces to the Aspire dashboard (OTLP gRPC). A file drop produces three independent root traces per row — one from ingest, one from categorize, one from ledger — connected by **span links** rather than parent-child relationships. This keeps individual row traces small and navigable even when a file contains thousands of rows.
+
+The link chain looks like:
+
+```
+ingest.publish ──link──► categorize.handle_imported ──link──► ledger.consume_transaction
+```
+
+See [docs/architecture.md](docs/architecture.md#distributed-tracing) for the full tracing design, including why a custom `x-link-traceparent` header is used between categorize and ledger.
+
 ## Running
 
 ```bash

@@ -25,8 +25,8 @@ dotnet test tests/integration
 # Go (ingest)
 go test ./services/ingest/...
 
-# Python
-# TODO
+# Python (rules + categorize)
+cd services/rules && uv run pytest tests/
 
 # SvelteKit — run in this order for web changes
 cd services/web
@@ -56,6 +56,20 @@ tests/integration/             C# xunit — boots full AppHost via Aspire.Hostin
 **One Postgres, owned by ledger.** No DB-per-service. Service-to-service communication is HTTP + RabbitMQ.
 
 OTel traces propagate across all services via `traceparent` in HTTP headers and RabbitMQ message properties. Aspire injects `OTEL_*` env vars automatically.
+
+## Category contract
+
+`shared/categories.json` is the single source of truth for valid transaction category names. **Do not add a category anywhere else first.**
+
+To add a new category:
+1. Add the name to `shared/categories.json` (alphabetical order, string array)
+2. Add the corresponding value to `TransactionCategory` enum in `services/ledger/src/Program.cs`
+
+Cross-service consistency is enforced by tests:
+- `services/ledger/tests/Wyb.Ledger.Tests` — asserts the C# enum exactly matches the JSON
+- `services/rules/tests/` — asserts every `category` value in `seed.json` is in the JSON
+
+These tests are your dev-time CI for this contract.
 
 ## Key conventions
 
