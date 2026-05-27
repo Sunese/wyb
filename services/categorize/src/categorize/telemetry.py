@@ -2,6 +2,7 @@
 
 from opentelemetry import trace
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
 from opentelemetry.propagate import set_global_textmap
 from opentelemetry.propagators.composite import CompositePropagator
 from opentelemetry.sdk.trace import TracerProvider
@@ -26,3 +27,4 @@ def configure_tracing() -> None:
             [TraceContextTextMapPropagator(), W3CBaggagePropagator()]
         )
     )
+    HTTPXClientInstrumentor().instrument()

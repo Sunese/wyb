@@ -12,8 +12,9 @@ dependencies = [
     "opentelemetry-exporter-otlp>=1.41.1",
     "opentelemetry-instrumentation-fastapi>=0.62b1",
     "opentelemetry-instrumentation-pika>=0.62b1",
+    "httpx>=0.28",
+    "opentelemetry-instrumentation-httpx>=0.62b1",
     "pika>=1.4.0",
-    "sqlalchemy>=2.0",
     "uvicorn[standard]>=0.46.0",
 ]
 

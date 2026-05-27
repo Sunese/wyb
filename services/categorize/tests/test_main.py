@@ -3,46 +3,7 @@ import os
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../src"))
 
-from sqlalchemy import create_engine, inspect
-from sqlalchemy.pool import StaticPool
-
-from categorize.main import Base, _matches, _apply_rules, _resolve_merchant
-
-
-# ── Database setup ────────────────────────────────────────────────────────────
-
-class TestDatabaseSetup:
-    def test_create_all_creates_expected_tables(self):
-        engine = create_engine(
-            "sqlite:///:memory:",
-            connect_args={"check_same_thread": False},
-            poolclass=StaticPool,
-        )
-        Base.metadata.create_all(engine)
-        tables = inspect(engine).get_table_names()
-        assert "category_rules" in tables
-        assert "merchants" in tables
-        assert "merchant_aliases" in tables
-
-
-# ── Connection string parsing ─────────────────────────────────────────────────
-
-from categorize.main import _parse_db_path
-
-
-class TestParseDbPath:
-    def test_uses_datasource_env_var_directly(self):
-        assert _parse_db_path("/tmp/foo.db", None) == "/tmp/foo.db"
-
-    def test_parses_plain_connection_string(self):
-        assert _parse_db_path(None, "Data Source=categorize.db") == "categorize.db"
-
-    def test_parses_aspire_connection_string_with_extra_params(self):
-        conn = "Data Source=/tmp/xhazihzg.jwn.db;Cache=Shared;Mode=ReadWriteCreate"
-        assert _parse_db_path(None, conn) == "/tmp/xhazihzg.jwn.db"
-
-    def test_datasource_env_var_takes_precedence(self):
-        assert _parse_db_path("/tmp/direct.db", "Data Source=/tmp/other.db") == "/tmp/direct.db"
+from categorize.main import _matches, _apply_rules, _resolve_merchant
 
 
 # ── _matches ──────────────────────────────────────────────────────────────────
@@ -108,7 +69,6 @@ class TestApplyRules:
             self._rule("MENY", "Contains", "Groceries", 2),
             self._rule("MENY VESTERBRO", "Exact", "Dining", 1),
         ]
-        # Priority 1 is checked first — exact match on "MENY VESTERBRO" wins.
         assert _apply_rules("MENY VESTERBRO", rules) == "Dining"
 
 
@@ -139,12 +99,12 @@ class TestResolveMerchant:
     def test_includes_default_category(self):
         aliases = [self._alias("MobilePay", "Contains", "MobilePay", "Transfer")]
         result = _resolve_merchant("MobilePay*12345 Rune", aliases)
-        assert result is not None  # ← Add this
+        assert result is not None
         assert result["merchantName"] == "MobilePay"
         assert result["defaultCategory"] == "Transfer"
 
     def test_default_category_can_be_none(self):
         aliases = [self._alias("MENY", "StartsWith", "MENY", None)]
         result = _resolve_merchant("MENY ØSTERBRO", aliases)
-        assert result is not None  # ← Add this
+        assert result is not None
         assert result["defaultCategory"] is None
