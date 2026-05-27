@@ -7,8 +7,8 @@ import (
 
 	"go.opentelemetry.io/contrib/bridges/otelslog"
 	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp"
-	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
+	"go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc"
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	"go.opentelemetry.io/otel/log/global"
 	"go.opentelemetry.io/otel/propagation"
 	sdklog "go.opentelemetry.io/otel/sdk/log"
@@ -19,7 +19,7 @@ import (
 // Configuration is read from OTEL_* env vars that Aspire injects.
 // Returns a shutdown function the caller should defer.
 func initTelemetry(ctx context.Context) (func(context.Context) error, error) {
-	traceExp, err := otlptracehttp.New(ctx)
+	traceExp, err := otlptracegrpc.New(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("create trace exporter: %w", err)
 	}
@@ -30,7 +30,7 @@ func initTelemetry(ctx context.Context) (func(context.Context) error, error) {
 		propagation.Baggage{},
 	))
 
-	logExp, err := otlploghttp.New(ctx)
+	logExp, err := otlploggrpc.New(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("create log exporter: %w", err)
 	}

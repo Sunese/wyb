@@ -12,6 +12,8 @@ import (
 
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 func main() {
@@ -40,7 +42,8 @@ func main() {
 	mux.HandleFunc("/ping", func(w http.ResponseWriter, r *http.Request) {
 		_, span := tracer.Start(r.Context(), "ingest.ping")
 		defer span.End()
-		fmt.Fprintln(w, "pong from ingest")
+		slog.InfoContext(r.Context(), "received ping")
+		fmt.Fprintln(w, "pong")
 	})
 
 	dropDir := os.Getenv("DROP_DIR")
@@ -63,11 +66,19 @@ func main() {
 	defer pub.Close()
 
 	processFile := func(ctx context.Context, path string) error {
+		ctx, span := tracer.Start(ctx, "ingest.processFile")
+		defer span.End()
 		rows, err := ParseFile(path)
 		if err != nil {
 			return fmt.Errorf("parse: %w", err)
 		}
 		for _, row := range rows {
+			rowCtx, publishSpan := tracer.Start(ctx, "ingest.publish",
+				trace.WithSpanKind(trace.SpanKindProducer),
+				trace.WithAttributes(
+					attribute.Int("row.index", row.RowIndex),
+					attribute.String("source.file", row.SourceFile),
+				))
 			event := TransactionImportedEvent{
 				SchemaVersion:  1,
 				SourceFile:     row.SourceFile,
@@ -78,8 +89,10 @@ func main() {
 				Currency:       row.Currency,
 				RawDescription: row.Description,
 			}
-			if err := pub.Publish(ctx, event); err != nil {
-				return fmt.Errorf("publish row %d: %w", row.RowIndex, err)
+			publishErr := pub.Publish(rowCtx, event)
+			publishSpan.End()
+			if publishErr != nil {
+				return fmt.Errorf("publish row %d: %w", row.RowIndex, publishErr)
 			}
 		}
 		slog.InfoContext(ctx, "published transactions", "count", len(rows), "source_file", rows[0].SourceFile)
