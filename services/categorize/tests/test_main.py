@@ -46,30 +46,38 @@ class TestApplyRules:
     def _rule(self, pattern, match_type, category, priority):
         return {"pattern": pattern, "matchType": match_type, "category": category, "priority": priority}
 
-    def test_returns_uncategorized_for_no_rules(self):
-        assert _apply_rules("SPOTIFY", []) == "Uncategorized"
+    def test_returns_none_for_no_rules(self):
+        assert _apply_rules("SPOTIFY", []) is None
 
     def test_applies_matching_rule(self):
         rules = [self._rule("SPOTIFY", "Contains", "Subscriptions", 1)]
-        assert _apply_rules("SPOTIFY PREMIUM", rules) == "Subscriptions"
+        result = _apply_rules("SPOTIFY PREMIUM", rules)
+        assert result is not None
+        assert result["category"] == "Subscriptions"
 
     def test_lower_priority_wins(self):
         rules = [
             self._rule("SPOTIFY", "Contains", "Subscriptions", 10),
             self._rule("SPOTIFY", "Contains", "Entertainment", 1),
         ]
-        assert _apply_rules("SPOTIFY PREMIUM", rules) == "Entertainment"
+        assert _apply_rules("SPOTIFY PREMIUM", rules)["category"] == "Entertainment"
 
-    def test_no_matching_rule_returns_uncategorized(self):
+    def test_no_matching_rule_returns_none(self):
         rules = [self._rule("NETFLIX", "Contains", "Subscriptions", 1)]
-        assert _apply_rules("SPOTIFY", rules) == "Uncategorized"
+        assert _apply_rules("SPOTIFY", rules) is None
 
     def test_first_matching_rule_by_priority_wins(self):
         rules = [
             self._rule("MENY", "Contains", "Groceries", 2),
             self._rule("MENY VESTERBRO", "Exact", "Dining", 1),
         ]
-        assert _apply_rules("MENY VESTERBRO", rules) == "Dining"
+        assert _apply_rules("MENY VESTERBRO", rules)["category"] == "Dining"
+
+    def test_returns_full_rule_dict(self):
+        rules = [self._rule("SPOTIFY", "Contains", "Subscriptions", 5)]
+        result = _apply_rules("SPOTIFY PREMIUM", rules)
+        assert result["pattern"] == "SPOTIFY"
+        assert result["priority"] == 5
 
 
 # ── _resolve_merchant ─────────────────────────────────────────────────────────

@@ -48,11 +48,11 @@ def _matches(text: str, pattern: str, match_type: str) -> bool:
     return False
 
 
-def _apply_rules(raw_description: str, rules: list) -> str:
+def _apply_rules(raw_description: str, rules: list) -> dict | None:
     for rule in sorted(rules, key=lambda r: r["priority"]):
         if _matches(raw_description, rule["pattern"], rule["matchType"]):
-            return rule["category"]
-    return "Uncategorized"
+            return rule
+    return None
 
 
 def _resolve_merchant(raw_description: str, aliases: list) -> dict | None:
@@ -89,24 +89,38 @@ def run_consumer():
             context=otel_context.Context(),
             kind=trace.SpanKind.CONSUMER,
             links=links,
-        ):
+        ) as span:
             payload = json.loads(body)
             raw_description = payload.get("raw_description", "")
 
             rules, aliases = _fetch_rules_and_aliases()
 
-            rule_category = _apply_rules(raw_description, rules)
+            rule_match = _apply_rules(raw_description, rules)
             merchant_match = _resolve_merchant(raw_description, aliases)
             merchant_name = merchant_match["merchantName"] if merchant_match else None
             merchant_default_category = merchant_match.get("defaultCategory") if merchant_match else None
-            category = (rule_category if rule_category != "Uncategorized"
-                        else merchant_default_category or "Uncategorized")
 
-            print(f"[categorize] '{raw_description}' → {category}"
-                  + (f" ({merchant_name})" if merchant_name else ""))
+            if rule_match:
+                category = rule_match["category"]
+                matched_by = "rule"
+            elif merchant_default_category:
+                category = merchant_default_category
+                matched_by = "merchant_default"
+            else:
+                category = "Uncategorized"
+                matched_by = "none"
+
+            span.set_attribute("categorize.raw_description", raw_description)
+            span.set_attribute("categorize.category", category)
+            span.set_attribute("categorize.matched_by", matched_by)
+            if rule_match:
+                span.set_attribute("categorize.rule.name", rule_match["name"])
+                span.set_attribute("categorize.rule.priority", rule_match["priority"])
+            if merchant_name:
+                span.set_attribute("categorize.merchant.name", merchant_name)
 
             enriched = {**payload, "category": category}
-            if merchant_name is not None:
+            if merchant_name:
                 enriched["merchant_name"] = merchant_name
 
             ch.basic_ack(delivery_tag=method.delivery_tag)
