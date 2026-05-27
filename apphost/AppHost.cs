@@ -18,7 +18,7 @@ builder.AddDockerComposeEnvironment("wyb")
        });
 
 var postgres = builder.AddPostgres("postgres")
-    // .WithDataVolume() // TODO: when ready, add a volume for Postgres data to ensure durability
+    .WithDataVolume()
     .WithLifetime(ContainerLifetime.Persistent)
     .WithContainerName("wyb-postgres")
     .WithPgWeb(containerName: "wyb-pgweb", configureContainer: pgWeb =>
@@ -31,7 +31,7 @@ var ledgerDb = postgres.AddDatabase("ledger-db");
 var rabbit = builder.AddRabbitMQ("rabbit", rabbitmqUsername, rabbitmqPassword)
     .WithManagementPlugin()
     .WithContainerName("wyb-rabbit")
-    // .WithDataVolume() // TODO: when ready, add a volume for RabbitMQ data to ensure durability
+    .WithDataVolume()
     .WithLifetime(ContainerLifetime.Persistent);
 
 // .NET service: ledger
