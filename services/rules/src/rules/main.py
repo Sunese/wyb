@@ -9,23 +9,22 @@ from uuid import uuid4
 from fastapi import Depends, FastAPI, HTTPException
 from sqlmodel import Field, Relationship, Session, SQLModel, create_engine, select
 
+from rules.categories import TransactionCategory
 from rules.telemetry import configure_tracing
 
 
-def _parse_db_path(datasource_env: str | None, conn_str: str | None) -> str:
-    if datasource_env:
-        return datasource_env
-    for part in (conn_str or "Data Source=rules.db").split(";"):
-        if part.strip().lower().startswith("data source="):
-            return part.strip()[len("Data Source="):]
-    return "rules.db"
+def _parse_pg_url(conn_str: str) -> str:
+    params = {k.strip().lower(): v.strip() for part in conn_str.split(";") if "=" in part for k, v in [part.split("=", 1)]}
+    host = params.get("host", "localhost")
+    port = params.get("port", "5432")
+    db = params.get("database", "rules-db")
+    user = params.get("username", "postgres")
+    pwd = params.get("password", "")
+    return f"postgresql+psycopg2://{user}:{pwd}@{host}:{port}/{db}"
 
 
-_db_path = _parse_db_path(
-    os.environ.get("RULES_DB_DATASOURCE"),
-    os.environ.get("ConnectionStrings__rules-db"),
-)
-engine = create_engine(f"sqlite:///{_db_path}", connect_args={"check_same_thread": False})
+_db_url = _parse_pg_url(os.environ.get("ConnectionStrings__rules-db", ""))
+engine = create_engine(_db_url)
 
 
 def get_session():
@@ -72,13 +71,13 @@ class CreateRuleRequest(SQLModel):
     name: str
     pattern: str
     matchType: str
-    category: str
+    category: TransactionCategory
     priority: int
 
 
 class CreateMerchantRequest(SQLModel):
     canonicalName: str
-    defaultCategory: Optional[str] = None
+    defaultCategory: Optional[TransactionCategory] = None
 
 
 class CreateAliasRequest(SQLModel):
@@ -90,10 +89,14 @@ class CreateAliasRequest(SQLModel):
 
 def _load_seed(session: Session) -> None:
     if session.exec(select(CategoryRule)).first() or session.exec(select(Merchant)).first():
+        print("Database already has data, skipping seed load")
         return
+    
     seed_path = Path(__file__).parent.parent.parent / "seed.json"
     if not seed_path.exists():
+        print("Seed file not found, skipping seed load")
         return
+    print(f"Loading seed data from {seed_path}")
     data = json.loads(seed_path.read_text())
     for r in data.get("rules", []):
         session.add(CategoryRule(**r))
@@ -104,6 +107,7 @@ def _load_seed(session: Session) -> None:
         session.flush()
         for a in aliases:
             session.add(MerchantAlias(merchantId=merchant.id, **a))
+    print("Seed data loaded successfully")
     session.commit()
 
 

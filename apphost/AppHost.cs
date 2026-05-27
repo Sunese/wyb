@@ -47,17 +47,17 @@ var ingest = builder.AddGolangApp("ingest", "../services/ingest")
     .WithOtlpExporter()
     .WithReference(rabbit)
     .WaitFor(rabbit)
-    .WithEnvironment("DROP_DIR", "../../sample-data/drop")
-    .WithEnvironment("RAW_DIR", "../../sample-data/raw");
+    .WithEnvironment("DROP_DIR", "../../data/drop")
+    .WithEnvironment("RAW_DIR", "../../data/raw");
 
 // Python services
-var rulesDb = builder.AddSqlite("rules-db")
-    .WithSqliteWeb();
+var rulesDb = postgres.AddDatabase("rules-db");
 
 var rules = builder.AddUvicornApp("rules", "../services/rules", "rules.main:app")
     .WithUv()
     .WithHttpEndpoint(env: "PORT")
     .WithReference(rulesDb)
+    .WaitFor(rulesDb)
     .WithEnvironment("PYTHONUNBUFFERED", "1");
 
 var categorize = builder.AddUvicornApp("categorize", "../services/categorize", "categorize.main:app")

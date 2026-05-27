@@ -1,5 +1,7 @@
 import sys
 import os
+import json
+from pathlib import Path
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../src"))
 
@@ -198,19 +200,34 @@ class TestDatabaseSetup:
 
 # ── Connection string parsing ─────────────────────────────────────────────────
 
-from rules.main import _parse_db_path
+from rules.main import _parse_pg_url
+
+_REPO_ROOT = Path(__file__).parent.parent.parent.parent
+_CANONICAL_CATEGORIES = set(
+    json.loads((_REPO_ROOT / "shared" / "categories.json").read_text())
+)
+_SEED_PATH = Path(__file__).parent.parent / "seed.json"
 
 
-class TestParseDbPath:
-    def test_uses_datasource_env_var_directly(self):
-        assert _parse_db_path("/tmp/foo.db", None) == "/tmp/foo.db"
+class TestCategoryConsistency:
+    def test_seed_categories_are_in_canonical_list(self):
+        seed = json.loads(_SEED_PATH.read_text())
+        rule_categories = {r["category"] for r in seed["rules"]}
+        merchant_categories = {
+            m["defaultCategory"]
+            for m in seed["merchants"]
+            if m.get("defaultCategory")
+        }
+        unknown = (rule_categories | merchant_categories) - _CANONICAL_CATEGORIES
+        assert not unknown, f"seed.json uses unknown categories: {unknown}"
 
-    def test_parses_plain_connection_string(self):
-        assert _parse_db_path(None, "Data Source=rules.db") == "rules.db"
 
-    def test_parses_aspire_connection_string_with_extra_params(self):
-        conn = "Data Source=/tmp/xhazihzg.jwn.db;Cache=Shared;Mode=ReadWriteCreate"
-        assert _parse_db_path(None, conn) == "/tmp/xhazihzg.jwn.db"
+class TestParsePgUrl:
+    def test_parses_full_aspire_connection_string(self):
+        conn = "Host=localhost;Port=5432;Database=rules-db;Username=postgres;Password=secret"
+        url = _parse_pg_url(conn)
+        assert url == "postgresql+psycopg2://postgres:secret@localhost:5432/rules-db"
 
-    def test_datasource_env_var_takes_precedence(self):
-        assert _parse_db_path("/tmp/direct.db", "Data Source=/tmp/other.db") == "/tmp/direct.db"
+    def test_uses_defaults_for_empty_string(self):
+        url = _parse_pg_url("")
+        assert url == "postgresql+psycopg2://postgres:@localhost:5432/rules-db"

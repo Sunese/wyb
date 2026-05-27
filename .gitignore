@@ -32,7 +32,7 @@ build/
 *.swp
 
 # app-specific
-sample-data/
+data/
 
 # claude
 .claude/worktrees/
