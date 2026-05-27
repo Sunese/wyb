@@ -1,5 +1,8 @@
+using System.Diagnostics;
+using System.Text;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using OpenTelemetry.Context.Propagation;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
 using Wyb.Ledger.Data;
@@ -9,6 +12,7 @@ namespace Wyb.Ledger;
 public class TransactionConsumer(IConnection rabbit, IServiceScopeFactory scopeFactory, ILogger<TransactionConsumer> logger)
     : BackgroundService
 {
+    private static readonly ActivitySource ActivitySource = new("Wyb.Ledger");
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         using var channel = await rabbit.CreateChannelAsync(cancellationToken: stoppingToken);
@@ -57,6 +61,26 @@ public class TransactionConsumer(IConnection rabbit, IServiceScopeFactory scopeF
         var consumer = new AsyncEventingBasicConsumer(channel);
         consumer.ReceivedAsync += async (_, ea) =>
         {
+            var linkContext = Propagators.DefaultTextMapPropagator.Extract(
+                default,
+                ea.BasicProperties.Headers,
+                static (headers, key) =>
+                {
+                    if (key != "traceparent") return [];
+                    if (headers is null || !headers.TryGetValue("x-link-traceparent", out var val)) return [];
+                    return val is byte[] bytes ? [Encoding.UTF8.GetString(bytes)] : [val?.ToString() ?? string.Empty];
+                });
+
+            ActivityLink[] links = linkContext.ActivityContext.TraceId != default
+                ? [new ActivityLink(linkContext.ActivityContext)]
+                : [];
+
+            using var activity = ActivitySource.StartActivity(
+                "ledger.consume_transaction",
+                ActivityKind.Consumer,
+                parentContext: default,
+                links: links);
+
             try
             {
                 var msg = JsonSerializer.Deserialize<ImportTransactionRequest>(
