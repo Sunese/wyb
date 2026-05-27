@@ -88,6 +88,7 @@ func (p *Publisher) Publish(ctx context.Context, event TransactionImportedEvent)
 	headers := amqp.Table{}
 	otel.GetTextMapPropagator().Inject(ctx, amqpCarrier(headers))
 
+	slog.InfoContext(ctx, "publishing message", "body", string(body))
 	return p.channel.PublishWithContext(ctx,
 		"transaction.imported",
 		"",

@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 import re
 import threading
@@ -11,6 +12,8 @@ from opentelemetry import context as otel_context
 from opentelemetry import propagate, trace
 
 from categorize.telemetry import configure_tracing
+
+logger = logging.getLogger(__name__)
 
 
 _rules_url = (
@@ -76,6 +79,7 @@ def run_consumer():
     channel.queue_bind(exchange="transaction.imported", queue="categorize.transaction.imported")
 
     def on_message(ch, method, properties, body):
+        logger.info("Received message: %s", body.decode())
         carrier = {
             k: v.decode() if isinstance(v, bytes) else v
             for k, v in (properties.headers or {}).items()
@@ -132,6 +136,7 @@ def run_consumer():
                 span_id = format(span_ctx.span_id, "016x")
                 flags = "01" if span_ctx.trace_flags & trace.TraceFlags.SAMPLED else "00"
                 outgoing_headers["x-link-traceparent"] = f"00-{trace_id}-{span_id}-{flags}"
+            logger.info("Publishing message: %s", json.dumps(enriched))
             channel.basic_publish(
                 exchange="transaction.categorized",
                 routing_key="",

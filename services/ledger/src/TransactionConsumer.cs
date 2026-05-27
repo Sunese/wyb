@@ -83,6 +83,8 @@ public class TransactionConsumer(IConnection rabbit, IServiceScopeFactory scopeF
 
             try
             {
+                logger.LogInformation("Received message with body: {Body}", Encoding.UTF8.GetString(ea.Body.Span));
+
                 var msg = JsonSerializer.Deserialize<ImportTransactionRequest>(
                     ea.Body.Span,
                     new JsonSerializerOptions
