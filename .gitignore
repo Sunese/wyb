@@ -39,3 +39,7 @@ data/
 
 # docker sandbox (sbx)
 .sbx/
+
+
+# playwright
+.playwright-cli/
