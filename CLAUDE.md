@@ -53,7 +53,7 @@ tests/integration/             C# xunit — boots full AppHost via Aspire.Hostin
 
 **Data flow:** ingest drops CSVs → publishes `transaction.imported` events to RabbitMQ → ledger consumes, deduplicates, and stores in Postgres → web reads from ledger over HTTP.
 
-**One Postgres, owned by ledger.** No DB-per-service. Service-to-service communication is HTTP + RabbitMQ.
+**One Postgres server, database-per-service.** Each service owns its own logical database (`ledger-db`, `rules-db`) and never reads another service's tables — cross-service data goes over HTTP + RabbitMQ. We deliberately run a single Postgres _instance_ hosting those databases, not a separate Postgres server per service.
 
 OTel traces propagate across all services via `traceparent` in HTTP headers and RabbitMQ message properties. Aspire injects `OTEL_*` env vars automatically.
 
@@ -62,10 +62,12 @@ OTel traces propagate across all services via `traceparent` in HTTP headers and 
 `shared/categories.json` is the single source of truth for valid transaction category names. **Do not add a category anywhere else first.**
 
 To add a new category:
+
 1. Add the name to `shared/categories.json` (alphabetical order, string array)
 2. Add the corresponding value to `TransactionCategory` enum in `services/ledger/src/Program.cs`
 
 Cross-service consistency is enforced by tests:
+
 - `services/ledger/tests/Wyb.Ledger.Tests` — asserts the C# enum exactly matches the JSON
 - `services/rules/tests/` — asserts every `category` value in `seed.json` is in the JSON
 
@@ -101,9 +103,9 @@ Available skills: `aspire`, `aspireify`, `dotnet-inspect`, `playwright-cli`.
 
 One feature per branch, named `m<milestone>/<short-desc>` (e.g. `m1/ledger-ef-core`). Merge sequentially so each branch can verify against working upstream services.
 
-## Current milestone (M2)
+## Current milestone (M3)
 
-Goal: Categorization (rules + manual) + merchant resolution
+Goal: Subscription management. Detect recurring charges.
 
 For more details on the roadmap, read the [roadmap](./roadmap.md)
 
@@ -112,24 +114,24 @@ For more details on the roadmap, read the [roadmap](./roadmap.md)
 CSV/XLSX import from the user's bank is the primary, blessed sync path
 and stays that way forever. Reasons, in order of importance:
 
-	1.	No regulatory exposure ever. CSV imports are not PSD2-regulated,
-	    so WYB never has to become an AISP, never has to deal with
-	    Finanstilsynet, and never has to operate as an agent of a licensed
-	    AISP. This is true regardless of how many users WYB has or
-	    whether they self-host or use a hosted instance.
-	2.	No third-party dependency for the core experience. WYB does not
-	    depend on Enable Banking, GoCardless/Nordigen, Tink, or any
-	    similar provider for the default sync path. GoCardless killed
-	    their free hobbyist tier for new users in 2025; relying on
-	    Enable Banking's restricted-mode terms continuing as-is would
-	    leave WYB one ToS change away from being broken.
-	3.	The thesis is periodic, not real-time. Anomaly detection on
-	    personal spending is a weekly-to-monthly question. The data does
-	    not need to be live; it needs to be reasonably current.
-	4.	Danish banks have decent CSV/XLSX exports. Danske Bank, Nordea,
-	    Jyske, Sydbank, Lunar, and Revolut all expose usable exports
-	    with meaningful merchant text. The friction tax is real but
-	    bounded.
+    1.	No regulatory exposure ever. CSV imports are not PSD2-regulated,
+        so WYB never has to become an AISP, never has to deal with
+        Finanstilsynet, and never has to operate as an agent of a licensed
+        AISP. This is true regardless of how many users WYB has or
+        whether they self-host or use a hosted instance.
+    2.	No third-party dependency for the core experience. WYB does not
+        depend on Enable Banking, GoCardless/Nordigen, Tink, or any
+        similar provider for the default sync path. GoCardless killed
+        their free hobbyist tier for new users in 2025; relying on
+        Enable Banking's restricted-mode terms continuing as-is would
+        leave WYB one ToS change away from being broken.
+    3.	The thesis is periodic, not real-time. Anomaly detection on
+        personal spending is a weekly-to-monthly question. The data does
+        not need to be live; it needs to be reasonably current.
+    4.	Danish banks have decent CSV/XLSX exports. Danske Bank, Nordea,
+        Jyske, Sydbank, Lunar, and Revolut all expose usable exports
+        with meaningful merchant text. The friction tax is real but
+        bounded.
 
 Optional power-user path: Enable Banking restricted-mode auto-sync, for
 users who want auto-sync and are willing to register their own Enable
@@ -139,36 +141,40 @@ under their own consent, this stays inside Enable Banking's
 "individual non-commercial use" allowance even when other people use
 instances of WYB the original author packaged.
 
-Conventions for sync UX
-	- Import lag is the enemy. The UI must aggressively surface "you
-	    haven't imported in N days" nudges so the periodic ingest
-	    cadence stays healthy.
-	- Missing-expected-charge detection (M3/M4) must reason about import
-	    lag. Don't flag Netflix as missing just because the user hasn't
-	    imported in two weeks.
-	- Per-bank parser quirks are inevitable. Treat parsers as plugins,
-	    not core code, and version them.
-
+Conventions for sync UX - Import lag is the enemy. The UI must aggressively surface "you
+haven't imported in N days" nudges so the periodic ingest
+cadence stays healthy. - Missing-expected-charge detection (M3/M4) must reason about import
+lag. Don't flag Netflix as missing just because the user hasn't
+imported in two weeks. - Per-bank parser quirks are inevitable. Treat parsers as plugins,
+not core code, and version them.
 
 ## Notes for the next agent
+
 - Resist scope creep into budgeting features. The thesis is anomaly
-    detection; staying weird where weird is the whole point.
+  detection; staying weird where weird is the whole point.
 - Resist scope creep into "real-time everything." Periodic is fine.
-    The product's job is to tell the user when something matters,
-    not to be a dashboard they stare at.
+  The product's job is to tell the user when something matters,
+  not to be a dashboard they stare at.
 - Don't normalize merchant strings in M2 by hand-coding rules
-    forever — design the rule engine and alias table now so it
-    grows.
+  forever — design the rule engine and alias table now so it
+  grows.
 - Treat bank CSV parsers as a plugin surface from day one. New
-    banks will show up; existing banks will change their formats.
+  banks will show up; existing banks will change their formats.
 - The user is the only user for the foreseeable future; design for
-    that, but keep multi-user in mind for the schema.
+  that, but keep multi-user in mind for the schema.
 - Do not pursue an AISP license, do not become an agent of a
-    licensed AISP, do not register WYB as a service operator with
-    Finanstilsynet. If WYB ever grows into something that would
-    require any of those, that's a strategic decision for a future
-    version of the project, not a technical task to add to the
-    roadmap.
-- For decisions on libraries/services, prefer boring infrastructure
-    (Postgres, RabbitMQ, Docker volumes) and save novelty budget for
-    application logic.
+  licensed AISP, do not register WYB as a service operator with
+  Finanstilsynet. If WYB ever grows into something that would
+  require any of those, that's a strategic decision for a future
+  version of the project, not a technical task to add to the
+  roadmap.
+- Architecture is allowed to be ambitious here. This is a solo
+  learning project, so leaning into more complex patterns (CQRS read
+  models, event sourcing, outbox, schema registry/Protobuf) is
+  welcome **when it teaches something or genuinely fits the domain** —
+  e.g. event-sourcing the ledger is a textbook match for an auditable
+  finance store. Still apply judgment: call out when a choice is pure
+  operational toil with thin learning payoff for a single-user app
+  (e.g. swapping RabbitMQ for Kafka), and don't reflexively reach for
+  novelty where it buys nothing. Boring infrastructure is fine as a
+  default, not as a hard rule.

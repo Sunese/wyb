@@ -1,0 +1,131 @@
+<mxfile host="65bd71144e">
+    <diagram name="WYB Architecture" id="wyb-arch">
+        <mxGraphModel dx="1727" dy="1362" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="0" pageScale="1" pageWidth="1654" pageHeight="1169" math="0" shadow="0">
+            <root>
+                <mxCell id="0"/>
+                <mxCell id="1" parent="0"/>
+                <mxCell id="title" value="WYB — System Architecture (services · datastores · integrations)" style="text;html=1;fontFamily=Helvetica;fontSize=18;fontStyle=1;fontColor=light-dark(#E2E8F0,#F5F5F5);verticalAlign=middle;" parent="1" vertex="1">
+                    <mxGeometry x="-23" y="-200" width="583" height="40" as="geometry"/>
+                </mxCell>
+                <mxCell id="drop" value="Drop folder&#xa;(data/drop)&#xa;&#xa;user drops bank&#xa;CSV / XLSX here" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#334155;strokeColor=#64748b;fontColor=#e2e8f0;fontFamily=Helvetica;fontSize=13;" parent="1" vertex="1">
+                    <mxGeometry x="-14" y="120" width="200" height="90" as="geometry"/>
+                </mxCell>
+                <mxCell id="raw" value="Raw archive&#xa;(data/raw)&#xa;&#xa;verbatim copy,&#xa;never modified / deleted" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#334155;strokeColor=#64748b;fontColor=#e2e8f0;fontFamily=Helvetica;fontSize=13;" parent="1" vertex="1">
+                    <mxGeometry x="-14" y="303" width="200" height="90" as="geometry"/>
+                </mxCell>
+                <mxCell id="ingest" value="ingest  (Go)  :5200&#xa;&#xa;watches drop dir, parses&#xa;CSV rows, archives raw,&#xa;publishes one event per row.&#xa;POST /replay re-emits raw." style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#6d28d9;strokeColor=#a78bfa;fontColor=#ede9fe;fontFamily=Helvetica;fontSize=13;" parent="1" vertex="1">
+                    <mxGeometry x="368" y="173" width="210" height="130" as="geometry"/>
+                </mxCell>
+                <mxCell id="rmq" value="RabbitMQ  :5672&#xa;(mgmt UI :15672)&#xa;&#xa;— message bus, AMQP —&#xa;&#xa;exchanges (fanout):&#xa;• transaction.imported&#xa;• transaction.categorized&#xa;• transaction.categorized.dlx&#xa;&#xa;JSON payloads,&#xa;each carries schema_version" style="rounded=1;arcSize=6;whiteSpace=wrap;html=1;fillColor=#c2410c;strokeColor=#fb923c;fontColor=#ffedd5;fontFamily=Helvetica;fontSize=13;verticalAlign=top;spacingTop=12;" parent="1" vertex="1">
+                    <mxGeometry x="760" y="150" width="200" height="350" as="geometry"/>
+                </mxCell>
+                <mxCell id="categorize" value="categorize  (Python / FastAPI)  :5400&#xa;&#xa;consumes transaction.imported,&#xa;applies category rules + resolves&#xa;merchant aliases, then publishes&#xa;transaction.categorized.&#xa;Stateless (no DB)." style="rounded=1;arcSize=8;whiteSpace=wrap;html=1;fillColor=#6d28d9;strokeColor=#a78bfa;fontColor=#ede9fe;fontFamily=Helvetica;fontSize=13;" parent="1" vertex="1">
+                    <mxGeometry x="1160" width="250" height="130" as="geometry"/>
+                </mxCell>
+                <mxCell id="rules" value="rules  (Python / FastAPI)  :5300&#xa;&#xa;serves category rules,&#xa;merchants &amp; aliases.&#xa;GET /rules · GET /merchants" style="rounded=1;arcSize=8;whiteSpace=wrap;html=1;fillColor=#6d28d9;strokeColor=#a78bfa;fontColor=#ede9fe;fontFamily=Helvetica;fontSize=13;" parent="1" vertex="1">
+                    <mxGeometry x="1178" y="-204" width="220" height="110" as="geometry"/>
+                </mxCell>
+                <mxCell id="ledger" value=".NET ledger  :5100&#xa;&#xa;consumes transaction.categorized,&#xa;dedupes (hash key) &amp; stores the&#xa;canonical transactions. Owns DB.&#xa;&#xa;HTTP API:&#xa;GET / POST /transactions&#xa;GET /categories&#xa;PATCH /transactions/{id}/category" style="rounded=1;arcSize=8;whiteSpace=wrap;html=1;fillColor=#6d28d9;strokeColor=#a78bfa;fontColor=#ede9fe;fontFamily=Helvetica;fontSize=13;" parent="1" vertex="1">
+                    <mxGeometry x="1153" y="185" width="270" height="170" as="geometry"/>
+                </mxCell>
+                <mxCell id="detect" value="detect  (Python / FastAPI)&#xa;&#xa;anomaly / subscription&#xa;detection&#xa;(placeholder — M3+)" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#6d28d9;strokeColor=#a78bfa;fontColor=#ede9fe;fontFamily=Helvetica;fontSize=13;dashed=1;opacity=75;" parent="1" vertex="1">
+                    <mxGeometry x="1180" y="410" width="210" height="110" as="geometry"/>
+                </mxCell>
+                <mxCell id="web" value="web  (SvelteKit / adapter-node)  :5173&#xa;&#xa;reads transactions &amp; categories,&#xa;edits manual category overrides.&#xa;The UI." style="rounded=1;arcSize=8;whiteSpace=wrap;html=1;fillColor=#0d9488;strokeColor=#2dd4bf;fontColor=#99f6e4;fontFamily=Helvetica;fontSize=13;" parent="1" vertex="1">
+                    <mxGeometry x="1873" y="440" width="220" height="120" as="geometry"/>
+                </mxCell>
+                <mxCell id="dlq" value="ledger.transaction&#xa;.categorized.dlq&#xa;&#xa;dead-letter queue&#xa;(poison messages)" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#b91c1c;strokeColor=#f87171;fontColor=#fee2e2;fontFamily=Helvetica;fontSize=12;" parent="1" vertex="1">
+                    <mxGeometry x="750" y="530" width="220" height="90" as="geometry"/>
+                </mxCell>
+                <mxCell id="pggrp" value="" style="rounded=1;arcSize=4;fillColor=#b1ddf0;strokeColor=#10739e;opacity=55;" parent="1" vertex="1">
+                    <mxGeometry x="1842" y="-198" width="292" height="435" as="geometry"/>
+                </mxCell>
+                <mxCell id="pglabel" value="PostgreSQL  :5433&lt;div&gt;single shared server&amp;nbsp;&lt;/div&gt;&lt;div&gt;(wyb-postgres)&amp;nbsp;&lt;/div&gt;&lt;div&gt;pgWeb admin :8080&lt;/div&gt;" style="text;html=1;fontFamily=Helvetica;fontSize=14;fontStyle=1;fillColor=none;strokeColor=none;" parent="1" vertex="1">
+                    <mxGeometry x="1909.5" y="-190" width="163" height="85" as="geometry"/>
+                </mxCell>
+                <mxCell id="ledgerdb" value="ledger-db&#xa;&#xa;transactions&#xa;(canonical store)" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#b1ddf0;strokeColor=#10739e;fontFamily=Helvetica;fontSize=13;" parent="1" vertex="1">
+                    <mxGeometry x="1868" y="72" width="230" height="110" as="geometry"/>
+                </mxCell>
+                <mxCell id="rulesdb" value="rules-db&#xa;&#xa;category_rules,&#xa;merchants,&#xa;merchant_aliases" style="rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#b1ddf0;strokeColor=#10739e;fontFamily=Helvetica;fontSize=13;" parent="1" vertex="1">
+                    <mxGeometry x="1868" y="-89" width="240" height="110" as="geometry"/>
+                </mxCell>
+                <mxCell id="e_drop_ingest" value="watches dir&#xa;fsnotify (filesystem)" style="curved=1;endArrow=block;endFill=1;endSize=12;strokeColor=#64748b;fontColor=#e2e8f0;fontFamily=Helvetica;fontSize=12;labelBackgroundColor=#1e293b;labelBorderColor=#334155;" parent="1" source="drop" target="ingest" edge="1">
+                    <mxGeometry x="-0.0112" relative="1" as="geometry">
+                        <mxPoint as="offset"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="e_ingest_raw" value="archive verbatim&#xa;file move" style="curved=1;endArrow=block;endFill=1;endSize=12;strokeColor=#64748b;fontColor=#e2e8f0;fontFamily=Helvetica;fontSize=12;labelBackgroundColor=#1e293b;labelBorderColor=#334155;" parent="1" source="ingest" target="raw" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e_ingest_rmq" value="AMQP publish&#xa;transaction.imported" style="curved=1;endArrow=block;endFill=1;endSize=12;strokeColor=#2D7600;fontColor=#e2e8f0;fontFamily=Helvetica;fontSize=12;labelBackgroundColor=light-dark(#1E293B,#8CFFA7);labelBorderColor=#334155;entryX=0;entryY=0.25;entryDx=0;entryDy=0;fillColor=#60a917;" parent="1" source="ingest" target="rmq" edge="1">
+                    <mxGeometry x="0.0411" y="3" relative="1" as="geometry">
+                        <mxPoint x="650" y="220" as="sourcePoint"/>
+                        <mxPoint as="offset"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="e_rmq_cat" value="AMQP consume&#xa;transaction.imported" style="curved=1;endArrow=block;endFill=1;endSize=12;strokeColor=#2D7600;fontColor=#e2e8f0;fontFamily=Helvetica;fontSize=12;labelBackgroundColor=light-dark(#1E293B,#8CFFA7);labelBorderColor=#334155;fillColor=#60a917;" parent="1" source="rmq" target="categorize" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="1042" y="110"/>
+                        </Array>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="e_cat_rules" value="HTTP GET&#xa;/rules · /merchants" style="curved=1;endArrow=block;endFill=1;endSize=12;strokeColor=#64748b;fontColor=#e2e8f0;fontFamily=Helvetica;fontSize=12;labelBackgroundColor=#1e293b;labelBorderColor=#334155;" parent="1" source="categorize" target="rules" edge="1">
+                    <mxGeometry x="0.0077" relative="1" as="geometry">
+                        <mxPoint as="offset"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="e_cat_rmq" value="AMQP publish&#xa;transaction.categorized" style="curved=1;endArrow=block;endFill=1;endSize=12;strokeColor=#3700CC;fontColor=#e2e8f0;fontFamily=Helvetica;fontSize=12;labelBackgroundColor=light-dark(#1E293B,#FF99FF);labelBorderColor=#334155;jumpStyle=arc;jumpSize=12;fillColor=#6a00ff;" parent="1" source="categorize" target="rmq" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="1067" y="214"/>
+                        </Array>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="e_rmq_ledger" value="AMQP consume&#xa;transaction.categorized" style="curved=1;endArrow=block;endFill=1;endSize=12;strokeColor=#3700CC;fontColor=#e2e8f0;fontFamily=Helvetica;fontSize=12;labelBackgroundColor=light-dark(#1E293B,#FF99FF);labelBorderColor=#334155;fillColor=#6a00ff;" parent="1" source="rmq" target="ledger" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="1058" y="316"/>
+                        </Array>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="e_ledger_dlq" value="AMQP nack → DLX&#xa;dead-letter on failure" style="curved=1;endArrow=block;endFill=1;endSize=12;strokeColor=#f87171;fontColor=#fee2e2;fontFamily=Helvetica;fontSize=12;labelBackgroundColor=#1e293b;labelBorderColor=#334155;exitX=0;exitY=0.85;exitDx=0;exitDy=0;entryX=1;entryY=0.4;entryDx=0;entryDy=0;" parent="1" source="ledger" target="dlq" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <Array as="points"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="e_ledger_db" value="SQL · TCP&#xa;EF Core / Npgsql" style="curved=1;endArrow=block;endFill=1;endSize=12;strokeColor=#64748b;fontColor=#e2e8f0;fontFamily=Helvetica;fontSize=12;labelBackgroundColor=#1e293b;labelBorderColor=#334155;" parent="1" source="ledger" target="ledgerdb" edge="1">
+                    <mxGeometry x="-0.3251" y="3" relative="1" as="geometry">
+                        <Array as="points"/>
+                        <mxPoint as="offset"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="e_rules_db" value="SQL · TCP&#xa;SQLModel / psycopg2" style="curved=1;endArrow=block;endFill=1;endSize=12;strokeColor=#64748b;fontColor=#e2e8f0;fontFamily=Helvetica;fontSize=12;labelBackgroundColor=#1e293b;labelBorderColor=#334155;jumpStyle=arc;jumpSize=12;" parent="1" source="rules" target="rulesdb" edge="1">
+                    <mxGeometry x="-0.3278" y="5" relative="1" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="1717" y="-93"/>
+                        </Array>
+                        <mxPoint x="-1" as="offset"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="e_web_ledger" value="HTTP&#xa;GET txns / categories,&#xa;PATCH category" style="curved=1;endArrow=block;endFill=1;endSize=12;strokeColor=#64748b;fontColor=#e2e8f0;fontFamily=Helvetica;fontSize=12;labelBackgroundColor=#1e293b;labelBorderColor=#334155;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.6;entryDx=0;entryDy=0;" parent="1" source="web" target="ledger" edge="1">
+                    <mxGeometry x="-0.3174" y="-10" relative="1" as="geometry">
+                        <mxPoint y="-1" as="offset"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="e_web_rules" value="HTTP&#xa;(wired, not yet used)" style="curved=1;dashed=1;opacity=60;endArrow=block;endFill=1;endSize=12;strokeColor=#64748b;fontColor=#e2e8f0;fontFamily=Helvetica;fontSize=11;labelBackgroundColor=#1e293b;labelBorderColor=#334155;" parent="1" source="web" target="rules" edge="1">
+                    <mxGeometry x="-0.5145" y="1" relative="1" as="geometry">
+                        <mxPoint as="offset"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="e_rmq_detect" value="AMQP&#xa;(planned)" style="curved=1;dashed=1;opacity=60;endArrow=block;endFill=1;endSize=12;strokeColor=#64748b;fontColor=#e2e8f0;fontFamily=Helvetica;fontSize=11;labelBackgroundColor=#1e293b;labelBorderColor=#334155;exitX=1;exitY=0.55;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" parent="1" source="rmq" target="detect" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="1130" y="416"/>
+                        </Array>
+                    </mxGeometry>
+                </mxCell>
+            </root>
+        </mxGraphModel>
+    </diagram>
+</mxfile>
