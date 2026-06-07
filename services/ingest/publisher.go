@@ -6,11 +6,12 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"time"
 
-	"github.com/google/uuid"
-	amqp "github.com/rabbitmq/amqp091-go"
+	"github.com/segmentio/kafka-go"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/propagation"
+	"go.opentelemetry.io/otel/trace"
 )
 
 type TransactionImportedEvent struct {
@@ -24,111 +25,79 @@ type TransactionImportedEvent struct {
 	RawDescription string `json:"raw_description"`
 }
 
+type PongEvent struct {
+	Message string `json:"message"`
+}
+
 // eventPublisher is the interface the replay handler depends on — lets tests inject a mock.
 type eventPublisher interface {
-	Publish(ctx context.Context, event TransactionImportedEvent) error
+	PublishTransactionImported(ctx context.Context, tracer trace.Tracer, event TransactionImportedEvent) error
 }
 
-type Publisher struct {
-	conn    *amqp.Connection
-	channel *amqp.Channel
+type Writer struct {
+	conn *kafka.Writer
 }
 
-func newPublisher() (*Publisher, error) {
-	url := os.Getenv("ConnectionStrings__rabbit")
+func newPublisher() (*Writer, error) {
+	url := os.Getenv("ConnectionStrings__kafka")
 	if url == "" {
-		return nil, fmt.Errorf("ConnectionStrings__rabbit is not set")
+		slog.Error("ConnectionStrings__kafka environment variable is required")
+		os.Exit(1)
 	}
 
-	conn, err := amqp.Dial(url)
-	if err != nil {
-		return nil, fmt.Errorf("connect: %w", err)
+	topic := "my-topic"
+
+	w := &kafka.Writer{
+		Addr:                   kafka.TCP(url),
+		Topic:                  topic,
+		Balancer:               &kafka.LeastBytes{},
+		AllowAutoTopicCreation: true,
 	}
 
-	ch, err := conn.Channel()
-	if err != nil {
-		conn.Close()
-		return nil, fmt.Errorf("open channel: %w", err)
-	}
-
-	if err := ch.ExchangeDeclare(
-		"transaction.imported",
-		"fanout",
-		true,  // durable
-		false, // autoDelete
-		false, // internal
-		false, // noWait
-		nil,
-	); err != nil {
-		return nil, fmt.Errorf("declare exchange: %w", err)
-	}
-
-	returns := ch.NotifyReturn(make(chan amqp.Return, 16))
-	go func() {
-		for r := range returns {
-			slog.Warn("unroutable message returned",
-				"reply_code", r.ReplyCode,
-				"reply_text", r.ReplyText,
-				"exchange", r.Exchange,
-				"routing_key", r.RoutingKey,
-				"message_id", r.MessageId,
-			)
-		}
-	}()
-
-	return &Publisher{conn: conn, channel: ch}, nil
+	return &Writer{conn: w}, nil
 }
 
-func (p *Publisher) Publish(ctx context.Context, event TransactionImportedEvent) error {
-	body, err := json.Marshal(event)
+func (p *Writer) PublishTransactionImported(ctx context.Context, tracer trace.Tracer, event TransactionImportedEvent) error {
+	data, err := json.Marshal(event)
 	if err != nil {
-		return fmt.Errorf("marshal: %w", err)
+		return err
 	}
 
-	headers := amqp.Table{}
-	otel.GetTextMapPropagator().Inject(ctx, amqpCarrier(headers))
+	err = p.conn.WriteMessages(ctx, kafka.Message{Value: data, Headers: injectTraceHeaders(ctx)})
+	return err
+}
 
-	slog.InfoContext(ctx, "publishing message", "body", string(body))
-	return p.channel.PublishWithContext(ctx,
-		"transaction.imported",
-		"",
-		true, // mandatory: log a warning if no queue is bound
-		false,
-		amqp.Publishing{
-			ContentType:  "application/json",
-			DeliveryMode: amqp.Persistent,
-			MessageId:    uuid.NewString(),
-			Timestamp:    time.Now(),
-			Headers:      headers,
-			Body:         body,
-		},
+func (p *Writer) PublishPong(ctx context.Context, tracer trace.Tracer, event PongEvent) error {
+	data, err := json.Marshal(event)
+	if err != nil {
+		return err
+	}
+
+	_, span := tracer.Start(ctx, "writer manual span")
+	span.SetAttributes(
+		attribute.String("topic", p.conn.Topic),
+		attribute.Int("message_size", len(data)),
+		attribute.String("event_type", "pong"),
+		attribute.String("event_message", event.Message),
 	)
+	span.AddLink(trace.LinkFromContext(ctx))
+	fmt.Printf("Publishing pong event: %s\n", string(data))
+	span.End()
+
+	err = p.conn.WriteMessages(ctx, kafka.Message{Value: data, Headers: injectTraceHeaders(ctx)})
+	return err
 }
 
-func (p *Publisher) Close() {
-	p.channel.Close()
+func (p *Writer) Close() {
 	p.conn.Close()
 }
 
-// amqpCarrier wraps amqp.Table to satisfy otel's TextMapCarrier interface
-// so trace context is propagated in message headers.
-type amqpCarrier amqp.Table
-
-func (c amqpCarrier) Get(key string) string {
-	v, ok := c[key]
-	if !ok {
-		return ""
+func injectTraceHeaders(ctx context.Context) []kafka.Header {
+	carrier := propagation.MapCarrier{}
+	otel.GetTextMapPropagator().Inject(ctx, carrier)
+	headers := make([]kafka.Header, 0, len(carrier))
+	for k, v := range carrier {
+		headers = append(headers, kafka.Header{Key: k, Value: []byte(v)})
 	}
-	s, _ := v.(string)
-	return s
-}
-
-func (c amqpCarrier) Set(key, value string) { c[key] = value }
-
-func (c amqpCarrier) Keys() []string {
-	keys := make([]string, 0, len(c))
-	for k := range c {
-		keys = append(keys, k)
-	}
-	return keys
+	return headers
 }

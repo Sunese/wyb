@@ -39,13 +39,6 @@ func main() {
 		fmt.Fprintln(w, "ok")
 	})
 
-	mux.HandleFunc("/ping", func(w http.ResponseWriter, r *http.Request) {
-		_, span := tracer.Start(r.Context(), "ingest.ping")
-		defer span.End()
-		slog.InfoContext(r.Context(), "received ping")
-		fmt.Fprintln(w, "pong")
-	})
-
 	dropDir := os.Getenv("DROP_DIR")
 	if dropDir == "" {
 		slog.Error("DROP_DIR environment variable is required")
@@ -60,10 +53,21 @@ func main() {
 
 	pub, err := newPublisher()
 	if err != nil {
-		slog.Error("failed to connect to RabbitMQ", "err", err)
+		slog.Error("failed to connect to Kafka", "err", err)
 		os.Exit(1)
 	}
 	defer pub.Close()
+
+	mux.HandleFunc("/ping", func(w http.ResponseWriter, r *http.Request) {
+		_, span := tracer.Start(r.Context(), "ingest.ping")
+		defer span.End()
+
+		// publish pong event
+		pub.PublishPong(r.Context(), tracer, PongEvent{Message: "pong"})
+
+		slog.InfoContext(r.Context(), "received ping")
+		fmt.Fprintln(w, "pong")
+	})
 
 	processFile := func(ctx context.Context, path string) error {
 		ctx, span := tracer.Start(ctx, "ingest.processFile")
@@ -89,7 +93,7 @@ func main() {
 				Currency:       row.Currency,
 				RawDescription: row.Description,
 			}
-			publishErr := pub.Publish(rowCtx, event)
+			publishErr := pub.PublishTransactionImported(rowCtx, tracer, event)
 			publishSpan.End()
 			if publishErr != nil {
 				return fmt.Errorf("publish row %d: %w", row.RowIndex, publishErr)

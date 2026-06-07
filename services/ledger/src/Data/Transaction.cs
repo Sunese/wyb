@@ -1,30 +1,39 @@
+using Wyb.Ledger.Events;
+
 namespace Wyb.Ledger.Data;
 
-public class Transaction
+/// <param name="Id">Identifier. De-duplication key. Is a SHA-256 hash of the transaction data. </param>
+/// <param name="Date"></param>
+/// <param name="AmountMinor"></param>
+/// <param name="Currency"></param>
+/// <param name="RawDescription"></param>
+/// <param name="ImportedAt"></param>
+/// <param name="Category"></param>
+/// <param name="SchemaVersion"></param>
+/// <param name="AccountId"> Optional account ID. Not necessarily known, therefore nullable. </param>
+/// <param name="MerchantName"> Resolved canonical merchant name, e.g. "MENY" for "MENY VESTERBRO 1234". Null when no alias matches. </param>
+/// <param name="CategoryOverridden"> When true, retroactive recategorization will not overwrite this transaction's category. </param>
+public sealed record Transaction(string Id,
+                                 DateOnly Date,
+                                 long AmountMinor,
+                                 string Currency,
+                                 string RawDescription,
+                                 DateTimeOffset ImportedAt,
+                                 TransactionCategory Category,
+                                 int SchemaVersion,
+                                 string? AccountId = null,
+                                 string? MerchantName = null,
+                                 bool CategoryOverridden = false)
 {
-    public Guid Id { get; private set; } = Guid.NewGuid();
-    public required string DedupKey { get; init; }      // sha256 hex, indexed unique
-    public required DateOnly Date { get; init; }
-    public required long AmountMinor { get; init; }           // amount in minor units (e.g. 2500 which would represent 25.00)
-    public required string Currency { get; init; }
-    public required string RawDescription { get; init; }
-    public required DateTimeOffset ImportedAt { get; init; }
-    public required TransactionCategory Category { get; set; }
-    public required int SchemaVersion { get; init; }
+    public static Transaction Create(TransactionRecorded recorded) => new(recorded.DedupKey,
+                                                              recorded.Date,
+                                                              recorded.AmountMinor,
+                                                              recorded.Currency,
+                                                              recorded.RawDescription,
+                                                              recorded.ImportedAt,
+                                                              recorded.Category,
+                                                              recorded.SchemaVersion);
 
-    /// <summary>
-    /// Optional account ID. Not necessarily known, therefore nullable.
-    /// </summary>
-    public string? AccountId { get; init; }
-
-    /// <summary>
-    /// Resolved canonical merchant name, e.g. "MENY" for "MENY VESTERBRO 1234".
-    /// Null when no alias matches.
-    /// </summary>
-    public string? MerchantName { get; set; }
-
-    /// <summary>
-    /// When true, retroactive recategorization will not overwrite this transaction's category.
-    /// </summary>
-    public bool CategoryOverridden { get; set; }
+    public static Transaction Apply(CategoryOverridden overridden, Transaction transaction) =>
+        transaction with { Category = overridden.Category, CategoryOverridden = true };
 }

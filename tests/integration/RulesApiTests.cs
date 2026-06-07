@@ -5,10 +5,15 @@ using System.Text.Json.Serialization;
 
 namespace Wyb.Integration.Tests;
 
-[Collection("Categorize")]
-public class CategorizeApiTests(CategorizeFixture fixture)
+/// <summary>
+/// Live HTTP CRUD against the rules service (rules + merchants + aliases) booted
+/// inside the AppHost. These don't touch Kafka — they exercise the API categorize
+/// reads from when enriching.
+/// </summary>
+[Collection("Stack")]
+public class RulesApiTests(StackFixture fixture)
 {
-    private readonly HttpClient _http = fixture.CategorizeHttp;
+    private readonly HttpClient _http = fixture.Rules;
 
     private static readonly JsonSerializerOptions Json = new()
     {
@@ -46,11 +51,9 @@ public class CategorizeApiTests(CategorizeFixture fixture)
 
         var ruleId = created.GetProperty("id").GetString();
 
-        // Verify it appears in GET /rules
         var all = await _http.GetFromJsonAsync<JsonElement[]>("/rules", Json);
         Assert.Contains(all!, r => r.GetProperty("id").GetString() == ruleId);
 
-        // Clean up
         await _http.DeleteAsync($"/rules/{ruleId}");
     }
 
@@ -151,7 +154,6 @@ public class CategorizeApiTests(CategorizeFixture fixture)
 
         await _http.DeleteAsync($"/merchants/{merchantId}");
 
-        // Alias should be gone too
         var del = await _http.DeleteAsync($"/aliases/{aliasId}");
         Assert.Equal(HttpStatusCode.NotFound, del.StatusCode);
     }

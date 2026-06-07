@@ -1,5 +1,5 @@
 from fastapi.testclient import TestClient
-from wyb_detect.main import app
+from detect.main import app
 
 
 def test_health() -> None:
