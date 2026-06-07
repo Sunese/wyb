@@ -35,8 +35,9 @@ func replayHandler(rawDir string, pub eventPublisher, tracer trace.Tracer) http.
 				replayErrors = append(replayErrors, fmt.Sprintf("%s: %v", entry.Name(), err))
 				continue
 			}
-			for _, row := range rows {
-				event := TransactionImportedEvent{
+			events := make([]TransactionImportedEvent, len(rows))
+			for i, row := range rows {
+				events[i] = TransactionImportedEvent{
 					SchemaVersion:  1,
 					SourceFile:     row.SourceFile,
 					RowIndex:       row.RowIndex,
@@ -46,12 +47,12 @@ func replayHandler(rawDir string, pub eventPublisher, tracer trace.Tracer) http.
 					Currency:       row.Currency,
 					RawDescription: row.Description,
 				}
-				if err := pub.PublishTransactionImported(r.Context(), tracer, event); err != nil {
-					replayErrors = append(replayErrors, fmt.Sprintf("%s row %d: %v", entry.Name(), row.RowIndex, err))
-					continue
-				}
-				eventsPublished++
 			}
+			if err := pub.PublishTransactionImported(r.Context(), tracer, events...); err != nil {
+				replayErrors = append(replayErrors, fmt.Sprintf("%s: %v", entry.Name(), err))
+				continue
+			}
+			eventsPublished += len(events)
 			filesReplayed++
 		}
 

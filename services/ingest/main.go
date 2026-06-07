@@ -12,8 +12,6 @@ import (
 
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/trace"
 )
 
 func main() {
@@ -76,14 +74,9 @@ func main() {
 		if err != nil {
 			return fmt.Errorf("parse: %w", err)
 		}
-		for _, row := range rows {
-			rowCtx, publishSpan := tracer.Start(ctx, "ingest.publish",
-				trace.WithSpanKind(trace.SpanKindProducer),
-				trace.WithAttributes(
-					attribute.Int("row.index", row.RowIndex),
-					attribute.String("source.file", row.SourceFile),
-				))
-			event := TransactionImportedEvent{
+		events := make([]TransactionImportedEvent, len(rows))
+		for i, row := range rows {
+			events[i] = TransactionImportedEvent{
 				SchemaVersion:  1,
 				SourceFile:     row.SourceFile,
 				RowIndex:       row.RowIndex,
@@ -93,11 +86,9 @@ func main() {
 				Currency:       row.Currency,
 				RawDescription: row.Description,
 			}
-			publishErr := importedPublisher.PublishTransactionImported(rowCtx, tracer, event)
-			publishSpan.End()
-			if publishErr != nil {
-				return fmt.Errorf("publish row %d: %w", row.RowIndex, publishErr)
-			}
+		}
+		if err := importedPublisher.PublishTransactionImported(ctx, tracer, events...); err != nil {
+			return fmt.Errorf("publish %s: %w", path, err)
 		}
 		slog.InfoContext(ctx, "published transactions", "count", len(rows), "source_file", rows[0].SourceFile)
 		return nil

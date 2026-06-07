@@ -21,13 +21,13 @@ type mockPublisher struct {
 	err    error
 }
 
-func (m *mockPublisher) PublishTransactionImported(_ context.Context, tracer trace.Tracer, event TransactionImportedEvent) error {
+func (m *mockPublisher) PublishTransactionImported(_ context.Context, tracer trace.Tracer, events ...TransactionImportedEvent) error {
 	if m.err != nil {
 		return m.err
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.events = append(m.events, event)
+	m.events = append(m.events, events...)
 	return nil
 }
 

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"time"
 
 	"github.com/segmentio/kafka-go"
 	"go.opentelemetry.io/otel"
@@ -31,7 +32,7 @@ type PongEvent struct {
 
 // eventPublisher is the interface the replay handler depends on — lets tests inject a mock.
 type eventPublisher interface {
-	PublishTransactionImported(ctx context.Context, tracer trace.Tracer, event TransactionImportedEvent) error
+	PublishTransactionImported(ctx context.Context, tracer trace.Tracer, events ...TransactionImportedEvent) error
 }
 
 type Writer struct {
@@ -50,18 +51,36 @@ func newPublisher(topic string) (*Writer, error) {
 		Topic:                  topic,
 		Balancer:               &kafka.LeastBytes{},
 		AllowAutoTopicCreation: true,
+		BatchSize:              10,
+		BatchTimeout:           10 * time.Millisecond,
 	}
 
 	return &Writer{conn: w}, nil
 }
 
-func (p *Writer) PublishTransactionImported(ctx context.Context, tracer trace.Tracer, event TransactionImportedEvent) error {
-	data, err := json.Marshal(event)
-	if err != nil {
-		return err
+func (p *Writer) PublishTransactionImported(ctx context.Context, tracer trace.Tracer, events ...TransactionImportedEvent) error {
+	messages := make([]kafka.Message, len(events))
+	for i, event := range events {
+		data, err := json.Marshal(event)
+		if err != nil {
+			return err
+		}
+		msgCtx, span := tracer.Start(ctx, "ingest.publish",
+			trace.WithSpanKind(trace.SpanKindProducer),
+			trace.WithAttributes(
+				attribute.Int("row.index", event.RowIndex),
+				attribute.String("source.file", event.SourceFile),
+				attribute.String("topic", p.conn.Topic),
+				attribute.Int("message_size", len(data)),
+				attribute.String("raw_description", event.RawDescription),
+			))
+		// Inject the per-row span context (not the parent) so the consumer
+		// links back to this specific ingest.publish span.
+		messages[i] = kafka.Message{Value: data, Headers: injectTraceHeaders(msgCtx)}
+		span.End()
 	}
 
-	err = p.conn.WriteMessages(ctx, kafka.Message{Value: data, Headers: injectTraceHeaders(ctx)})
+	err := p.conn.WriteMessages(ctx, messages...)
 	return err
 }
 
