@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // mockPublisher captures published events and can be configured to fail.
@@ -20,7 +21,7 @@ type mockPublisher struct {
 	err    error
 }
 
-func (m *mockPublisher) Publish(_ context.Context, event TransactionImportedEvent) error {
+func (m *mockPublisher) PublishTransactionImported(_ context.Context, tracer trace.Tracer, event TransactionImportedEvent) error {
 	if m.err != nil {
 		return m.err
 	}

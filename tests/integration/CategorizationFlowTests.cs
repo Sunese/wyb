@@ -1,25 +1,22 @@
 using System.Net.Http.Json;
-using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using RabbitMQ.Client;
-using RabbitMQ.Client.Events;
 
 namespace Wyb.Integration.Tests;
 
 /// <summary>
-/// End-to-end event flow tests: seed rules/merchants via the categorize HTTP API,
-/// publish a transaction.imported event, then consume from transaction.categorized
-/// and assert the enriched payload.
+/// End-to-end event flow over Kafka: seed rules/merchants via the rules HTTP API,
+/// publish a transaction.imported event to <c>my-topic</c>, then read the enriched
+/// result categorize republishes to <c>transaction.categorized</c>.
 ///
-/// Each test binds its own exclusive temp queue to transaction.categorized so
-/// messages from different tests don't cross-contaminate.
+/// Each test uses a unique marker in the description so concurrent tests don't
+/// cross-contaminate (the reader filters the topic by that marker).
 /// </summary>
-[Collection("Categorize")]
-public class CategorizationFlowTests(CategorizeFixture fixture)
+[Collection("Stack")]
+public class CategorizationFlowTests(StackFixture fixture)
 {
-    private readonly HttpClient _http = fixture.CategorizeHttp;
-    private readonly IConnection _rabbit = fixture.Rabbit;
+    private const string OutTopic = "transaction.categorized";
+    private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(30);
 
     private static readonly JsonSerializerOptions Json = new()
     {
@@ -27,34 +24,7 @@ public class CategorizationFlowTests(CategorizeFixture fixture)
         Converters = { new JsonStringEnumConverter() },
     };
 
-    /// <summary>
-    /// Publishes one transaction.imported event and waits up to <paramref name="timeoutMs"/>
-    /// for a matching message to arrive on <paramref name="queueName"/>.
-    /// Returns the parsed JSON payload, or null if nothing arrived in time.
-    /// </summary>
-    private async Task<JsonElement?> PublishAndConsumeAsync(
-        IChannel channel, string queueName, object eventPayload, int timeoutMs = 8_000)
-    {
-        var tcs = new TaskCompletionSource<JsonElement>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var consumer = new AsyncEventingBasicConsumer(channel);
-        consumer.ReceivedAsync += (_, ea) =>
-        {
-            var json = JsonSerializer.Deserialize<JsonElement>(ea.Body.Span);
-            tcs.TrySetResult(json);
-            return Task.CompletedTask;
-        };
-        await channel.BasicConsumeAsync(queueName, autoAck: true, consumer: consumer);
-
-        var body = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(eventPayload));
-        await channel.BasicPublishAsync("transaction.imported", routingKey: "", body: body);
-
-        using var cts = new CancellationTokenSource(timeoutMs);
-        cts.Token.Register(() => tcs.TrySetCanceled());
-        try { return await tcs.Task; }
-        catch (OperationCanceledException) { return null; }
-    }
-
-    private static object MakeEvent(string description) => new
+    private static string MakeEvent(string description) => JsonSerializer.Serialize(new
     {
         schema_version = 1,
         source_file = "integration-test.csv",
@@ -64,15 +34,21 @@ public class CategorizationFlowTests(CategorizeFixture fixture)
         amount_minor = -9900,
         currency = "DKK",
         raw_description = description,
-    };
+    });
+
+    private Task<JsonElement?> ConsumeEnrichedFor(string description) =>
+        KafkaTestClient.ConsumeMatchingAsync(
+            fixture.Bootstrap, OutTopic,
+            json => json.TryGetProperty("raw_description", out var d) && d.GetString() == description,
+            Timeout);
 
     [Fact]
     public async Task ImportedTransaction_WithMatchingRule_IsAssignedCorrectCategory()
     {
-        // Use a unique pattern to avoid collisions with other tests' rules.
         var marker = $"INTTEST_RULE_{Guid.NewGuid():N}";
+        var description = $"Buy {marker} premium";
 
-        var rulePost = await _http.PostAsJsonAsync("/rules", new
+        var rulePost = await fixture.Rules.PostAsJsonAsync("/rules", new
         {
             name = "Integration test rule",
             pattern = marker,
@@ -85,20 +61,16 @@ public class CategorizationFlowTests(CategorizeFixture fixture)
 
         try
         {
-            using var channel = await _rabbit.CreateChannelAsync();
-            await channel.ExchangeDeclareAsync("transaction.categorized", "fanout", durable: true, autoDelete: false);
-            await channel.ExchangeDeclareAsync("transaction.imported", "fanout", durable: true, autoDelete: false);
-            var q = await channel.QueueDeclareAsync(queue: "", durable: false, exclusive: true, autoDelete: true);
-            await channel.QueueBindAsync(q.QueueName, "transaction.categorized", "");
+            await KafkaTestClient.ProduceAsync(fixture.Bootstrap, "my-topic", MakeEvent(description));
 
-            var result = await PublishAndConsumeAsync(channel, q.QueueName, MakeEvent($"Buy {marker} premium"));
+            var result = await ConsumeEnrichedFor(description);
 
             Assert.NotNull(result);
             Assert.Equal("Subscriptions", result.Value.GetProperty("category").GetString());
         }
         finally
         {
-            await _http.DeleteAsync($"/rules/{ruleId}");
+            await fixture.Rules.DeleteAsync($"/rules/{ruleId}");
         }
     }
 
@@ -107,32 +79,29 @@ public class CategorizationFlowTests(CategorizeFixture fixture)
     {
         var marker = $"INTTEST_MERCHANT_{Guid.NewGuid():N}";
         var canonicalName = $"Merchant_{marker}";
+        var description = $"Purchase at {marker} store";
 
-        var merchantPost = await _http.PostAsJsonAsync("/merchants",
+        var merchantPost = await fixture.Rules.PostAsJsonAsync("/merchants",
             new { canonicalName, defaultCategory = "Shopping" }, Json);
         merchantPost.EnsureSuccessStatusCode();
         var merchantId = (await merchantPost.Content.ReadFromJsonAsync<JsonElement>(Json)).GetProperty("id").GetString();
-        await _http.PostAsJsonAsync($"/merchants/{merchantId}/aliases",
+        await fixture.Rules.PostAsJsonAsync($"/merchants/{merchantId}/aliases",
             new { pattern = marker, matchType = "Contains" }, Json);
 
         try
         {
-            using var channel = await _rabbit.CreateChannelAsync();
-            await channel.ExchangeDeclareAsync("transaction.categorized", "fanout", durable: true, autoDelete: false);
-            await channel.ExchangeDeclareAsync("transaction.imported", "fanout", durable: true, autoDelete: false);
-            var q = await channel.QueueDeclareAsync(queue: "", durable: false, exclusive: true, autoDelete: true);
-            await channel.QueueBindAsync(q.QueueName, "transaction.categorized", "");
+            await KafkaTestClient.ProduceAsync(fixture.Bootstrap, "my-topic", MakeEvent(description));
 
-            var result = await PublishAndConsumeAsync(channel, q.QueueName, MakeEvent($"Purchase at {marker} store"));
+            var result = await ConsumeEnrichedFor(description);
 
             Assert.NotNull(result);
             Assert.Equal(canonicalName, result.Value.GetProperty("merchant_name").GetString());
-            // No explicit rule — merchant default category applies
+            // No explicit rule — merchant default category applies.
             Assert.Equal("Shopping", result.Value.GetProperty("category").GetString());
         }
         finally
         {
-            await _http.DeleteAsync($"/merchants/{merchantId}");
+            await fixture.Rules.DeleteAsync($"/merchants/{merchantId}");
         }
     }
 
@@ -141,13 +110,9 @@ public class CategorizationFlowTests(CategorizeFixture fixture)
     {
         var description = $"COMPLETELY_UNKNOWN_{Guid.NewGuid():N}";
 
-        using var channel = await _rabbit.CreateChannelAsync();
-        await channel.ExchangeDeclareAsync("transaction.categorized", "fanout", durable: true, autoDelete: false);
-        await channel.ExchangeDeclareAsync("transaction.imported", "fanout", durable: true, autoDelete: false);
-        var q = await channel.QueueDeclareAsync(queue: "", durable: false, exclusive: true, autoDelete: true);
-        await channel.QueueBindAsync(q.QueueName, "transaction.categorized", "");
+        await KafkaTestClient.ProduceAsync(fixture.Bootstrap, "my-topic", MakeEvent(description));
 
-        var result = await PublishAndConsumeAsync(channel, q.QueueName, MakeEvent(description));
+        var result = await ConsumeEnrichedFor(description);
 
         Assert.NotNull(result);
         Assert.Equal("Uncategorized", result.Value.GetProperty("category").GetString());

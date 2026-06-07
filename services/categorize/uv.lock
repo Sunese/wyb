@@ -50,14 +50,13 @@ name = "categorize"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "confluent-kafka" },
     { name = "fastapi" },
     { name = "httpx" },
     { name = "opentelemetry-distro" },
     { name = "opentelemetry-exporter-otlp" },
     { name = "opentelemetry-instrumentation-fastapi" },
     { name = "opentelemetry-instrumentation-httpx" },
-    { name = "opentelemetry-instrumentation-pika" },
-    { name = "pika" },
     { name = "uvicorn", extra = ["standard"] },
 ]
 
@@ -69,14 +68,13 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "confluent-kafka", specifier = ">=2.6.0" },
     { name = "fastapi", specifier = ">=0.136.1" },
     { name = "httpx", specifier = ">=0.28" },
     { name = "opentelemetry-distro", specifier = ">=0.62b1" },
     { name = "opentelemetry-exporter-otlp", specifier = ">=1.41.1" },
     { name = "opentelemetry-instrumentation-fastapi", specifier = ">=0.62b1" },
     { name = "opentelemetry-instrumentation-httpx", specifier = ">=0.62b1" },
-    { name = "opentelemetry-instrumentation-pika", specifier = ">=0.62b1" },
-    { name = "pika", specifier = ">=1.4.0" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.46.0" },
 ]
 
@@ -171,6 +169,24 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/d8/53/6f443c9a4a8358a93a6792e2acffb9d9d5cb0a5cfd8802644b7b1c9a02e4/colorama-0.4.6.tar.gz", hash = "sha256:08695f5cb7ed6e0531a20572697297273c47b8cae5a63ffc6d6ed5c201be6e44", size = 27697, upload-time = "2022-10-25T02:36:22.414Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/d1/d6/3965ed04c63042e047cb6a3e6ed1a63a35087b6a609aa3a15ed8ac56c221/colorama-0.4.6-py2.py3-none-any.whl", hash = "sha256:4f1d9991f5acc0ca119f9d443620b77f9d6b33703e51011c16baf57afb285fc6", size = 25335, upload-time = "2022-10-25T02:36:20.889Z" },
+]
+
+[[package]]
+name = "confluent-kafka"
+version = "2.14.2"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/ff/e5/58ac277094b03a51d9725798d0e53a60c1be69dc4330ae9cedc2d9efa430/confluent_kafka-2.14.2.tar.gz", hash = "sha256:fc827265571a778b1ff560ab2f3ec5dce3c573c29eb4cf6ded9718d55a5e4262", size = 289180, upload-time = "2026-06-03T09:53:37.63Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/3d/27/e1a75e5b7c9caeb61885d10b038d520fec73f21967d763f18f600d917f9f/confluent_kafka-2.14.2-cp313-cp313-macosx_13_0_arm64.whl", hash = "sha256:590667a106f2f79a1a9412723686e32e5a4a85b911ff2c15ce828c5ac8748f3b", size = 4187857, upload-time = "2026-06-03T09:51:40.099Z" },
+    { url = "https://files.pythonhosted.org/packages/96/6f/1299809f078da711783878486cea966871a02d8b3bdaf126298bc6f778db/confluent_kafka-2.14.2-cp313-cp313-macosx_13_0_x86_64.whl", hash = "sha256:654afcf3d1b29536d098d271a66ef077920759b752a8c9978feee35ce4a174cf", size = 4190988, upload-time = "2026-06-03T09:51:44.265Z" },
+    { url = "https://files.pythonhosted.org/packages/5a/81/d68501702330138f9b0e946674fea60285cf5c231eb70dfcc0459fa7f0c8/confluent_kafka-2.14.2-cp313-cp313-manylinux_2_28_aarch64.whl", hash = "sha256:1cbb88bae84c8b0f9247a896bdbb53820bdf0f277aa126bf577108ee70491926", size = 4804040, upload-time = "2026-06-03T09:51:50.225Z" },
+    { url = "https://files.pythonhosted.org/packages/c2/fc/720a0fa7127a6bd23517bb0bc6dc6d2934bf5fe385277ced7bf3c6e9d2d4/confluent_kafka-2.14.2-cp313-cp313-manylinux_2_28_x86_64.whl", hash = "sha256:53b5fb5eb0ae89005e572da95f96e95c7d247525d66857748b74012d58f19ef3", size = 4599115, upload-time = "2026-06-03T09:51:58.07Z" },
+    { url = "https://files.pythonhosted.org/packages/13/da/e1679fbe6a4d4dc1172db2ecad7eccef00555fb4f11f432b8e802ad68998/confluent_kafka-2.14.2-cp313-cp313-win_amd64.whl", hash = "sha256:aff0de94a6321eedb6188d121a8001b090d6d5f4d76b3f6754a3c8747fb1847d", size = 4451883, upload-time = "2026-06-03T09:52:06.049Z" },
+    { url = "https://files.pythonhosted.org/packages/5b/7a/0ab7208fd86e7295a83a372c4978ab06d7caa36c925bb3c82fbcb4ff74fd/confluent_kafka-2.14.2-cp314-cp314-macosx_13_0_arm64.whl", hash = "sha256:f42c745e6162905bd16bc2beb6429aef38240ff0e2f1c3edde4a462f121ea9c1", size = 4187700, upload-time = "2026-06-03T09:52:22.147Z" },
+    { url = "https://files.pythonhosted.org/packages/02/de/968c53892abaface22071b306333d83f61d8db5a1eb7224af61cde99e770/confluent_kafka-2.14.2-cp314-cp314-macosx_13_0_x86_64.whl", hash = "sha256:3d1e5f1853a67be1573014ad610874e4e80bdcfb1c7ca1cadaeae5c5bef88a94", size = 4190827, upload-time = "2026-06-03T09:52:27.438Z" },
+    { url = "https://files.pythonhosted.org/packages/99/77/722ce2b8b6e2ad0ffe9d7a042b0d0011edb679ec292203a739d10c483e26/confluent_kafka-2.14.2-cp314-cp314-manylinux_2_28_aarch64.whl", hash = "sha256:c5f247f6c046e457f369d3f2b11cb8d133b17e8306ce63c2ae0414469819d3e6", size = 4803806, upload-time = "2026-06-03T09:52:32.392Z" },
+    { url = "https://files.pythonhosted.org/packages/e8/fd/a8466ed8fd6d6f82a13fd852fa14eca8b71cbca192fe82d58677808fcae3/confluent_kafka-2.14.2-cp314-cp314-manylinux_2_28_x86_64.whl", hash = "sha256:d61e22e6cd24e518c47b3b608023d2476bca4a7525de7877ca28e323af98f832", size = 4598793, upload-time = "2026-06-03T09:52:37.059Z" },
+    { url = "https://files.pythonhosted.org/packages/45/73/c74394c74541f4c06be482ef03e3d3f668a4df5e4b52bc50e6a43bb9c345/confluent_kafka-2.14.2-cp314-cp314-win_amd64.whl", hash = "sha256:cf18131b6b8137f5ea0de1ff0988eb2af40a372c31f8238b015d70ccd1c0945a", size = 4584051, upload-time = "2026-06-03T09:52:42.226Z" },
 ]
 
 [[package]]
@@ -460,22 +476,6 @@ wheels = [
 ]
 
 [[package]]
-name = "opentelemetry-instrumentation-pika"
-version = "0.63b1"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "opentelemetry-api" },
-    { name = "opentelemetry-instrumentation" },
-    { name = "opentelemetry-semantic-conventions" },
-    { name = "packaging" },
-    { name = "wrapt" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/be/eb/088c98cf73ba357f052cdf17dc5846f940fcd50c7dbe5d9958dfea364aeb/opentelemetry_instrumentation_pika-0.63b1.tar.gz", hash = "sha256:c74e23b2370283890d8094bc07686731ba6a7a4bb89a26dc3d6c86ae988fd8d0", size = 13247, upload-time = "2026-05-21T16:36:39.273Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/28/b3/57b63669cb47ec38575194e79dc3b3fc753646fd11e6cc925709aa9f81a9/opentelemetry_instrumentation_pika-0.63b1-py3-none-any.whl", hash = "sha256:14ab56ed06c0c8c922af72cf214eae6513da83be7b6987a17e4f10fa0820d7c2", size = 12681, upload-time = "2026-05-21T16:35:39.726Z" },
-]
-
-[[package]]
 name = "opentelemetry-proto"
 version = "1.42.1"
 source = { registry = "https://pypi.org/simple" }
@@ -530,15 +530,6 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/d7/f1/e7a6dd94a8d4a5626c03e4e99c87f241ba9e350cd9e6d75123f992427270/packaging-26.2.tar.gz", hash = "sha256:ff452ff5a3e828ce110190feff1178bb1f2ea2281fa2075aadb987c2fb221661", size = 228134, upload-time = "2026-04-24T20:15:23.917Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/df/b2/87e62e8c3e2f4b32e5fe99e0b86d576da1312593b39f47d8ceef365e95ed/packaging-26.2-py3-none-any.whl", hash = "sha256:5fc45236b9446107ff2415ce77c807cee2862cb6fac22b8a73826d0693b0980e", size = 100195, upload-time = "2026-04-24T20:15:22.081Z" },
-]
-
-[[package]]
-name = "pika"
-version = "1.4.1"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/f7/09/8c42dd00c4b3e09ebd174455d30823c261eefef9d2b7e94ae9ca779704c1/pika-1.4.1.tar.gz", hash = "sha256:e851f3e4992adfbf8eb64e9b86d94e3382f92ba0200055abedbb29676b8e713b", size = 154268, upload-time = "2026-05-22T18:01:24.855Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/7f/7b/a09c0d378ee8604220902c58103104b2304ef99744c4b7fc45312d280484/pika-1.4.1-py3-none-any.whl", hash = "sha256:2daae7bd422a0fc4f4879fd48c9a1932ed74a0bc7172e1e5f9bde63a101ed074", size = 164962, upload-time = "2026-05-22T18:01:23.429Z" },
 ]
 
 [[package]]

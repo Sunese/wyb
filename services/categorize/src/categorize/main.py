@@ -6,7 +6,7 @@ import threading
 from contextlib import asynccontextmanager
 
 import httpx
-import pika
+from confluent_kafka import Consumer, Producer
 from fastapi import FastAPI
 from opentelemetry import context as otel_context
 from opentelemetry import propagate, trace
@@ -14,6 +14,12 @@ from opentelemetry import propagate, trace
 from categorize.telemetry import configure_tracing
 
 logger = logging.getLogger(__name__)
+
+# Topics: ingest publishes imported transactions to IN_TOPIC; we publish the
+# enriched result to OUT_TOPIC, which the ledger consumes.
+IN_TOPIC = "my-topic"
+OUT_TOPIC = "transaction.categorized"
+GROUP_ID = "categorize"
 
 
 _rules_url = (
@@ -65,87 +71,140 @@ def _resolve_merchant(raw_description: str, aliases: list) -> dict | None:
     return None
 
 
-# ── RabbitMQ consumer (runs in a background thread) ───────────────────────────
+def _enrich(payload: dict) -> tuple[dict, dict]:
+    """Apply rules + merchant aliases to a transaction payload.
+
+    Returns (enriched_payload, span_attributes) so the caller can record
+    the decision on its span.
+    """
+    raw_description = payload.get("raw_description", "")
+
+    rules, aliases = _fetch_rules_and_aliases()
+
+    rule_match = _apply_rules(raw_description, rules)
+    merchant_match = _resolve_merchant(raw_description, aliases)
+    merchant_name = merchant_match["merchantName"] if merchant_match else None
+    merchant_default_category = merchant_match.get("defaultCategory") if merchant_match else None
+
+    if rule_match:
+        category = rule_match["category"]
+        matched_by = "rule"
+    elif merchant_default_category:
+        category = merchant_default_category
+        matched_by = "merchant_default"
+    else:
+        category = "Uncategorized"
+        matched_by = "none"
+
+    enriched = {**payload, "category": category}
+    if merchant_name:
+        enriched["merchant_name"] = merchant_name
+
+    attributes = {
+        "categorize.raw_description": raw_description,
+        "categorize.category": category,
+        "categorize.matched_by": matched_by,
+    }
+    if rule_match:
+        attributes["categorize.rule.name"] = rule_match["name"]
+        attributes["categorize.rule.priority"] = rule_match["priority"]
+    if merchant_name:
+        attributes["categorize.merchant.name"] = merchant_name
+
+    return enriched, attributes
+
+
+# ── Kafka helpers ─────────────────────────────────────────────────────────────
+
+def _headers_to_carrier(headers) -> dict:
+    """Confluent message headers are a list of (key, bytes) tuples (or None)."""
+    carrier: dict = {}
+    for key, value in headers or []:
+        carrier[key] = value.decode() if isinstance(value, (bytes, bytearray)) else value
+    return carrier
+
+
+def _context_to_headers() -> list[tuple[str, bytes]]:
+    """Inject the current trace context into W3C headers for the outgoing message."""
+    carrier: dict = {}
+    propagate.inject(carrier)
+    return [(k, v.encode()) for k, v in carrier.items()]
+
+
+# ── Kafka consumer (runs in a background thread) ──────────────────────────────
+
+_stop = threading.Event()
+
 
 def run_consumer():
     tracer = trace.get_tracer("categorize")
-    url = os.environ["ConnectionStrings__rabbit"]
-    connection = pika.BlockingConnection(pika.URLParameters(url))
-    channel = connection.channel()
+    bootstrap = os.environ["ConnectionStrings__kafka"]
 
-    channel.exchange_declare(exchange="transaction.imported", exchange_type="fanout", durable=True)
-    channel.exchange_declare(exchange="transaction.categorized", exchange_type="fanout", durable=True)
-    channel.queue_declare(queue="categorize.transaction.imported", durable=True)
-    channel.queue_bind(exchange="transaction.imported", queue="categorize.transaction.imported")
-
-    def on_message(ch, method, properties, body):
-        logger.info("Received message: %s", body.decode())
-        carrier = {
-            k: v.decode() if isinstance(v, bytes) else v
-            for k, v in (properties.headers or {}).items()
+    consumer = Consumer(
+        {
+            "bootstrap.servers": bootstrap,
+            "group.id": GROUP_ID,
+            "auto.offset.reset": "earliest",
+            "enable.auto.commit": True,
         }
-        upstream_ctx = propagate.extract(carrier)
-        upstream_span_ctx = trace.get_current_span(upstream_ctx).get_span_context()
-        links = [trace.Link(upstream_span_ctx)] if upstream_span_ctx.is_valid else []
+    )
+    producer = Producer({"bootstrap.servers": bootstrap})
+    consumer.subscribe([IN_TOPIC])
+    logger.info("categorize consuming %s, producing %s", IN_TOPIC, OUT_TOPIC)
 
-        with tracer.start_as_current_span(
-            "categorize.handle_imported",
-            context=otel_context.Context(),
-            kind=trace.SpanKind.CONSUMER,
-            links=links,
-        ) as span:
+    try:
+        while not _stop.is_set():
+            msg = consumer.poll(1.0)
+            if msg is None:
+                continue
+            if msg.error():
+                logger.error("Kafka consume error: %s", msg.error())
+                continue
+
+            try:
+                _handle_message(msg, tracer, producer)
+            except Exception:
+                # One bad message must not wedge the consumer.
+                logger.exception("Failed to handle message, skipping")
+    finally:
+        producer.flush(5)
+        consumer.close()
+
+
+def _handle_message(msg, tracer, producer):
+    raw = msg.value()
+    body = raw.decode() if isinstance(raw, (bytes, bytearray)) else raw
+    logger.info("Received message: %s", body)
+
+    carrier = _headers_to_carrier(msg.headers())
+    upstream_ctx = propagate.extract(carrier)
+    upstream_span_ctx = trace.get_current_span(upstream_ctx).get_span_context()
+    links = [trace.Link(upstream_span_ctx)] if upstream_span_ctx.is_valid else []
+
+    with tracer.start_as_current_span(
+        "categorize.handle_imported",
+        context=otel_context.Context(),
+        kind=trace.SpanKind.CONSUMER,
+        links=links,
+    ) as span:
+        try:
             payload = json.loads(body)
-            raw_description = payload.get("raw_description", "")
+        except (ValueError, TypeError):
+            # Poison message — log and skip so we don't wedge the consumer.
+            logger.warning("Skipping undeserializable message: %s", body)
+            return
 
-            rules, aliases = _fetch_rules_and_aliases()
+        enriched, attributes = _enrich(payload)
+        for key, value in attributes.items():
+            span.set_attribute(key, value)
 
-            rule_match = _apply_rules(raw_description, rules)
-            merchant_match = _resolve_merchant(raw_description, aliases)
-            merchant_name = merchant_match["merchantName"] if merchant_match else None
-            merchant_default_category = merchant_match.get("defaultCategory") if merchant_match else None
-
-            if rule_match:
-                category = rule_match["category"]
-                matched_by = "rule"
-            elif merchant_default_category:
-                category = merchant_default_category
-                matched_by = "merchant_default"
-            else:
-                category = "Uncategorized"
-                matched_by = "none"
-
-            span.set_attribute("categorize.raw_description", raw_description)
-            span.set_attribute("categorize.category", category)
-            span.set_attribute("categorize.matched_by", matched_by)
-            if rule_match:
-                span.set_attribute("categorize.rule.name", rule_match["name"])
-                span.set_attribute("categorize.rule.priority", rule_match["priority"])
-            if merchant_name:
-                span.set_attribute("categorize.merchant.name", merchant_name)
-
-            enriched = {**payload, "category": category}
-            if merchant_name:
-                enriched["merchant_name"] = merchant_name
-
-            ch.basic_ack(delivery_tag=method.delivery_tag)
-
-            span_ctx = trace.get_current_span().get_span_context()
-            outgoing_headers: dict = {}
-            if span_ctx.is_valid:
-                trace_id = format(span_ctx.trace_id, "032x")
-                span_id = format(span_ctx.span_id, "016x")
-                flags = "01" if span_ctx.trace_flags & trace.TraceFlags.SAMPLED else "00"
-                outgoing_headers["x-link-traceparent"] = f"00-{trace_id}-{span_id}-{flags}"
-            logger.info("Publishing message: %s", json.dumps(enriched))
-            channel.basic_publish(
-                exchange="transaction.categorized",
-                routing_key="",
-                body=json.dumps(enriched),
-                properties=pika.BasicProperties(headers=outgoing_headers),
-            )
-
-    channel.basic_consume(queue="categorize.transaction.imported", on_message_callback=on_message)
-    channel.start_consuming()
+        logger.info("Publishing message: %s", json.dumps(enriched))
+        producer.produce(
+            OUT_TOPIC,
+            value=json.dumps(enriched).encode(),
+            headers=_context_to_headers(),
+        )
+        producer.poll(0)
 
 
 # ── FastAPI app ───────────────────────────────────────────────────────────────
@@ -153,9 +212,18 @@ def run_consumer():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     configure_tracing()
+    _stop.clear()
     thread = threading.Thread(target=run_consumer, daemon=True)
     thread.start()
-    yield
+    try:
+        yield
+    finally:
+        _stop.set()
 
 
 app = FastAPI(lifespan=lifespan)
+
+
+@app.get("/health")
+def health() -> dict[str, str]:
+    return {"status": "ok"}

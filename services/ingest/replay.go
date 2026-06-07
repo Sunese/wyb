@@ -46,7 +46,7 @@ func replayHandler(rawDir string, pub eventPublisher, tracer trace.Tracer) http.
 					Currency:       row.Currency,
 					RawDescription: row.Description,
 				}
-				if err := pub.Publish(r.Context(), event); err != nil {
+				if err := pub.PublishTransactionImported(r.Context(), tracer, event); err != nil {
 					replayErrors = append(replayErrors, fmt.Sprintf("%s row %d: %v", entry.Name(), row.RowIndex, err))
 					continue
 				}
