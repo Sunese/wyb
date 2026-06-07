@@ -10,7 +10,7 @@ namespace Wyb.Integration.Tests;
 /// collection, avoiding a ~60-second startup per test class.
 ///
 /// Exposes the Kafka bootstrap servers plus HTTP clients for each service so the
-/// tests can drive the real, wired-up stack: ingest publishes to <c>my-topic</c>,
+/// tests can drive the real, wired-up stack: ingest publishes to <c>transaction.imported</c>,
 /// categorize enriches into <c>transaction.categorized</c>, ledger and detect consume.
 /// </summary>
 public sealed class StackFixture : IAsyncLifetime
@@ -37,10 +37,10 @@ public sealed class StackFixture : IAsyncLifetime
         // .NET resources (kafka container, ledger) register Aspire health checks.
         await App.ResourceNotifications
             .WaitForResourceHealthyAsync("kafka")
-            .WaitAsync(TimeSpan.FromSeconds(120));
+            .WaitAsync(TimeSpan.FromSeconds(20));
         await App.ResourceNotifications
             .WaitForResourceHealthyAsync("ledger")
-            .WaitAsync(TimeSpan.FromSeconds(120));
+            .WaitAsync(TimeSpan.FromSeconds(20));
 
         Bootstrap = (await App.GetConnectionStringAsync("kafka"))
             ?? throw new InvalidOperationException("kafka connection string not available");
@@ -65,7 +65,7 @@ public sealed class StackFixture : IAsyncLifetime
 
     private async Task WarmUpPipelineAsync()
     {
-        var timeout = TimeSpan.FromSeconds(120);
+        var timeout = TimeSpan.FromSeconds(5);
         var description = $"WARMUP_{Guid.NewGuid():N}";
         var sentinel = JsonSerializer.Serialize(new
         {
@@ -79,9 +79,9 @@ public sealed class StackFixture : IAsyncLifetime
             raw_description = description,
         });
 
-        await KafkaTestClient.ProduceAsync(Bootstrap, "my-topic", sentinel);
+        await KafkaTestClient.ProduceAsync(Bootstrap, "transaction.imported", sentinel);
 
-        // categorize consumed my-topic and republished to transaction.categorized.
+        // categorize consumed transaction.imported and republished to transaction.categorized.
         var enriched = await KafkaTestClient.ConsumeMatchingAsync(
             Bootstrap, "transaction.categorized",
             json => json.TryGetProperty("raw_description", out var d) && d.GetString() == description,
@@ -89,10 +89,10 @@ public sealed class StackFixture : IAsyncLifetime
         if (enriched is null)
             throw new InvalidOperationException("categorize did not enrich the warmup message in time");
 
-        // detect drained my-topic; ledger drained transaction.categorized.
-        if (!await KafkaTestClient.WaitForGroupCaughtUpAsync(Bootstrap, "detect", "my-topic", timeout))
+        // detect drained transaction.categorized; ledger drained transaction.categorized.
+        if (!await KafkaTestClient.WaitForGroupCaughtUpAsync(Bootstrap, "detect", "transaction.categorized", timeout))
             throw new InvalidOperationException("detect did not catch up during warmup");
-        if (!await KafkaTestClient.WaitForGroupCaughtUpAsync(Bootstrap, "my-group", "transaction.categorized", timeout))
+        if (!await KafkaTestClient.WaitForGroupCaughtUpAsync(Bootstrap, "ledger", "transaction.categorized", timeout))
             throw new InvalidOperationException("ledger did not catch up during warmup");
     }
 

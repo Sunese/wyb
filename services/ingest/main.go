@@ -51,19 +51,19 @@ func main() {
 		os.Exit(1)
 	}
 
-	pub, err := newPublisher()
+	importedPublisher, err := newPublisher("transaction.imported")
 	if err != nil {
 		slog.Error("failed to connect to Kafka", "err", err)
 		os.Exit(1)
 	}
-	defer pub.Close()
+	defer importedPublisher.Close()
 
 	mux.HandleFunc("/ping", func(w http.ResponseWriter, r *http.Request) {
 		_, span := tracer.Start(r.Context(), "ingest.ping")
 		defer span.End()
 
 		// publish pong event
-		pub.PublishPong(r.Context(), tracer, PongEvent{Message: "pong"})
+		importedPublisher.PublishPong(r.Context(), tracer, PongEvent{Message: "pong"})
 
 		slog.InfoContext(r.Context(), "received ping")
 		fmt.Fprintln(w, "pong")
@@ -93,7 +93,7 @@ func main() {
 				Currency:       row.Currency,
 				RawDescription: row.Description,
 			}
-			publishErr := pub.PublishTransactionImported(rowCtx, tracer, event)
+			publishErr := importedPublisher.PublishTransactionImported(rowCtx, tracer, event)
 			publishSpan.End()
 			if publishErr != nil {
 				return fmt.Errorf("publish row %d: %w", row.RowIndex, publishErr)
@@ -103,7 +103,7 @@ func main() {
 		return nil
 	}
 
-	mux.Handle("POST /replay", replayHandler(rawDir, pub, tracer))
+	mux.Handle("POST /replay", replayHandler(rawDir, importedPublisher, tracer))
 
 	if err := startWatcher(ctx, dropDir, rawDir, processFile); err != nil {
 		slog.Error("failed to start watcher", "err", err)

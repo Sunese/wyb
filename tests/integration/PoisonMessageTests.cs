@@ -4,7 +4,7 @@ namespace Wyb.Integration.Tests;
 
 /// <summary>
 /// Kafka has no dead-letter queue; resilience instead means a malformed message
-/// must not wedge a consumer. We publish garbage to my-topic, then a valid event,
+/// must not wedge a consumer. We publish garbage to transaction.imported, then a valid event,
 /// and assert categorize still enriches the valid one — i.e. it skipped the poison
 /// and kept processing.
 /// </summary>
@@ -14,10 +14,10 @@ public class PoisonMessageTests(StackFixture fixture)
     [Fact]
     public async Task PoisonMessage_DoesNotWedge_Categorize()
     {
-        await KafkaTestClient.ProduceAsync(fixture.Bootstrap, "my-topic", "not valid json {{{{");
+        await KafkaTestClient.ProduceAsync(fixture.Bootstrap, "transaction.imported", "not valid json {{{{");
 
         var description = $"INTTEST_POISON_{Guid.NewGuid():N}";
-        await KafkaTestClient.ProduceAsync(fixture.Bootstrap, "my-topic", JsonSerializer.Serialize(new
+        await KafkaTestClient.ProduceAsync(fixture.Bootstrap, "transaction.imported", JsonSerializer.Serialize(new
         {
             schema_version = 1,
             source_file = "integration-test.csv",

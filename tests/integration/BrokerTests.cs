@@ -30,12 +30,12 @@ public class BrokerTests(StackFixture fixture)
     [Fact]
     public async Task Ingest_Ping_PublishesPongToKafka()
     {
-        // The Go ingest service publishes a pong event to my-topic on /ping.
+        // The Go ingest service publishes a pong event to transaction.imported on /ping.
         var res = await fixture.Ingest.GetAsync("/ping");
         res.EnsureSuccessStatusCode();
 
         var result = await KafkaTestClient.ConsumeMatchingAsync(
-            fixture.Bootstrap, "my-topic",
+            fixture.Bootstrap, "transaction.imported",
             json => json.TryGetProperty("message", out var m) && m.GetString() == "pong",
             TimeSpan.FromSeconds(15));
 

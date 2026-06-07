@@ -38,14 +38,12 @@ type Writer struct {
 	conn *kafka.Writer
 }
 
-func newPublisher() (*Writer, error) {
+func newPublisher(topic string) (*Writer, error) {
 	url := os.Getenv("ConnectionStrings__kafka")
 	if url == "" {
 		slog.Error("ConnectionStrings__kafka environment variable is required")
 		os.Exit(1)
 	}
-
-	topic := "my-topic"
 
 	w := &kafka.Writer{
 		Addr:                   kafka.TCP(url),

@@ -8,9 +8,9 @@ from fastapi import FastAPI
 
 logger = logging.getLogger(__name__)
 
-# detect watches the imported-transaction stream. Anomaly detection is a
+# detect watches the transaction.categorized stream. Anomaly detection is a
 # placeholder for now (M3/M4); for now it just consumes the stream.
-IN_TOPIC = "my-topic"
+IN_TOPIC = "transaction.categorized"
 GROUP_ID = "detect"
 
 _stop = threading.Event()

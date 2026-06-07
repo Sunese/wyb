@@ -6,7 +6,7 @@ namespace Wyb.Integration.Tests;
 
 /// <summary>
 /// End-to-end event flow over Kafka: seed rules/merchants via the rules HTTP API,
-/// publish a transaction.imported event to <c>my-topic</c>, then read the enriched
+/// publish a transaction.imported event to <c>transaction.imported</c>, then read the enriched
 /// result categorize republishes to <c>transaction.categorized</c>.
 ///
 /// Each test uses a unique marker in the description so concurrent tests don't
@@ -61,7 +61,7 @@ public class CategorizationFlowTests(StackFixture fixture)
 
         try
         {
-            await KafkaTestClient.ProduceAsync(fixture.Bootstrap, "my-topic", MakeEvent(description));
+            await KafkaTestClient.ProduceAsync(fixture.Bootstrap, "transaction.imported", MakeEvent(description));
 
             var result = await ConsumeEnrichedFor(description);
 
@@ -90,7 +90,7 @@ public class CategorizationFlowTests(StackFixture fixture)
 
         try
         {
-            await KafkaTestClient.ProduceAsync(fixture.Bootstrap, "my-topic", MakeEvent(description));
+            await KafkaTestClient.ProduceAsync(fixture.Bootstrap, "transaction.imported", MakeEvent(description));
 
             var result = await ConsumeEnrichedFor(description);
 
@@ -110,7 +110,7 @@ public class CategorizationFlowTests(StackFixture fixture)
     {
         var description = $"COMPLETELY_UNKNOWN_{Guid.NewGuid():N}";
 
-        await KafkaTestClient.ProduceAsync(fixture.Bootstrap, "my-topic", MakeEvent(description));
+        await KafkaTestClient.ProduceAsync(fixture.Bootstrap, "transaction.imported", MakeEvent(description));
 
         var result = await ConsumeEnrichedFor(description);
 

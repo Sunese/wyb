@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 # Topics: ingest publishes imported transactions to IN_TOPIC; we publish the
 # enriched result to OUT_TOPIC, which the ledger consumes.
-IN_TOPIC = "my-topic"
+IN_TOPIC = "transaction.imported"
 OUT_TOPIC = "transaction.categorized"
 GROUP_ID = "categorize"
 
