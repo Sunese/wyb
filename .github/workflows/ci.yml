@@ -23,7 +23,7 @@ jobs:
           dotnet-version: "10.0.x"
 
       - name: Restore
-        run: dotnet restore services/ledger/tests/Wyb.Ledger.Tests
+        run: dotnet restore Wyb.slnx
 
       - name: Test
         run: dotnet test services/ledger/tests/Wyb.Ledger.Tests --no-restore --logger "console;verbosity=minimal"
@@ -40,7 +40,7 @@ jobs:
           dotnet-version: "10.0.x"
 
       - name: Restore
-        run: dotnet restore services/ledger/tests/Wyb.Ledger.IntegrationTests
+        run: dotnet restore Wyb.slnx
 
       - name: Test
         run: dotnet test services/ledger/tests/Wyb.Ledger.IntegrationTests --no-restore --logger "console;verbosity=minimal"
