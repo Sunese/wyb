@@ -1,0 +1,127 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ── .NET: ledger unit tests ────────────────────────────────────────────────
+  dotnet-unit:
+    name: ".NET unit tests"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Restore
+        run: dotnet restore services/ledger
+
+      - name: Test
+        run: dotnet test services/ledger/tests/Wyb.Ledger.Tests --no-restore --logger "console;verbosity=minimal"
+
+  # ── .NET: ledger integration tests (Testcontainers — needs Docker) ────────
+  dotnet-integration:
+    name: ".NET integration tests"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Restore
+        run: dotnet restore services/ledger
+
+      - name: Test
+        run: dotnet test services/ledger/tests/Wyb.Ledger.IntegrationTests --no-restore --logger "console;verbosity=minimal"
+
+  # ── Go: ingest ─────────────────────────────────────────────────────────────
+  go:
+    name: "Go tests (ingest)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: services/ingest/go.mod
+          cache-dependency-path: services/ingest/go.sum
+
+      - name: Test
+        working-directory: services/ingest
+        run: go test ./... -race -count=1
+
+  # ── Python: rules ──────────────────────────────────────────────────────────
+  python-rules:
+    name: "Python tests (rules)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        working-directory: services/rules
+        run: uv sync --frozen
+
+      - name: Test
+        working-directory: services/rules
+        run: uv run pytest tests/ -v
+
+  # ── SvelteKit: web ─────────────────────────────────────────────────────────
+  web:
+    name: "Web (type-check, lint, unit tests)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: services/web/package-lock.json
+
+      - name: Install dependencies
+        working-directory: services/web
+        run: npm ci
+
+      - name: Type-check
+        working-directory: services/web
+        run: npm run check
+
+      - name: Lint
+        working-directory: services/web
+        run: npm run lint
+
+      - name: Unit tests
+        working-directory: services/web
+        run: npm run test:unit
+
+  # ── Cross-service integration (full AppHost) ───────────────────────────────
+  # TODO(M3/M4): enable once the test suite stabilises.
+  # Requires Aspire workload, Docker, and all services to build cleanly in CI.
+  #
+  # integration:
+  #   name: "Cross-service integration"
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - uses: actions/setup-dotnet@v4
+  #       with:
+  #         dotnet-version: "10.0.x"
+  #     - name: Install Aspire workload
+  #       run: dotnet workload install aspire
+  #     - name: Test
+  #       run: dotnet test tests/integration --logger "console;verbosity=minimal"
