@@ -38,6 +38,7 @@ func replayHandler(rawDir string, pub eventPublisher, tracer trace.Tracer) http.
 			events := make([]TransactionImportedEvent, len(rows))
 			for i, row := range rows {
 				events[i] = TransactionImportedEvent{
+					DedupKey:       ComputeDedupKey(row),
 					SchemaVersion:  1,
 					SourceFile:     row.SourceFile,
 					RowIndex:       row.RowIndex,
