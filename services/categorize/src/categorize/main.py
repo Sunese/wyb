@@ -12,7 +12,7 @@ from fastapi import FastAPI
 from opentelemetry import context as otel_context
 from opentelemetry import propagate, trace
 
-from categorize.telemetry import configure_tracing
+from categorize.telemetry import configure_telemetry
 
 logger = logging.getLogger(__name__)
 
@@ -231,7 +231,7 @@ def _handle_message(msg, tracer, producer):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    configure_tracing()
+    configure_telemetry()
     _stop.clear()
     thread = threading.Thread(target=run_consumer, daemon=True)
     thread.start()

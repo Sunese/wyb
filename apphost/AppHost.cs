@@ -59,6 +59,7 @@ var rules = builder.AddUvicornApp("rules", "../services/rules", "rules.main:app"
 var categorize = builder.AddUvicornApp("categorize", "../services/categorize", "categorize.main:app")
     .WithUv()
     .WithHttpEndpoint(port: 5400, env: "PORT")
+    .WithOtlpExporter()
     .WithReference(kafka)
     .WaitFor(kafka)
     .WithReference(rules)
@@ -66,6 +67,7 @@ var categorize = builder.AddUvicornApp("categorize", "../services/categorize", "
     .WithEnvironment("PYTHONUNBUFFERED", "1");
 
 builder.AddUvicornApp("detect", "../services/detect", "detect.main:app")
+    .WithOtlpExporter()
     .WithReference(kafka)
     .WaitFor(kafka)
     .WithUv();

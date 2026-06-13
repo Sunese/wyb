@@ -7,7 +7,6 @@ from opentelemetry._logs import set_logger_provider
 from opentelemetry.baggage.propagation import W3CBaggagePropagator
 from opentelemetry.exporter.otlp.proto.grpc._log_exporter import OTLPLogExporter
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
-from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
 from opentelemetry.propagate import set_global_textmap
 from opentelemetry.propagators.composite import CompositePropagator
 from opentelemetry.sdk._logs import LoggerProvider, LoggingHandler
@@ -18,15 +17,9 @@ from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapProp
 
 
 def configure_telemetry() -> None:
-    """Configure traces and logs, exporting via OTLP to the Aspire dashboard.
-
-    Resource attributes (service.name etc.) are picked up automatically from
-    OTEL_SERVICE_NAME and OTEL_RESOURCE_ATTRIBUTES.
-    Endpoint comes from OTEL_EXPORTER_OTLP_ENDPOINT.
-    """
+    """Configure traces and logs, exporting via OTLP to the Aspire dashboard."""
     _configure_tracing()
     _configure_logging()
-    HTTPXClientInstrumentor().instrument()
 
 
 def _configure_tracing() -> None:
@@ -50,3 +43,4 @@ def _configure_logging() -> None:
     root = logging.getLogger()
     root.setLevel(logging.INFO)
     root.addHandler(handler)
+
