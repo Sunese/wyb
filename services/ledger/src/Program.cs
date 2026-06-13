@@ -2,6 +2,7 @@ using System.Text.Json.Serialization;
 using JasperFx;
 using JasperFx.Events;
 using Marten;
+using JasperFx.Events.Projections;
 using Microsoft.EntityFrameworkCore;
 using Weasel.Core;
 using Wyb.Ledger;
@@ -24,6 +25,7 @@ var martenBuilder = builder.Services.AddMarten(options =>
         options.Events.StreamIdentity = StreamIdentity.AsString;
         options.Connection(connectionString);
         options.DatabaseSchemaName = "events";
+        options.Projections.Snapshot<Transaction>(SnapshotLifecycle.Inline);
     })
     .UseLightweightSessions();
 
@@ -43,10 +45,17 @@ if (app.Environment.IsDevelopment())
 
 app.MapDefaultEndpoints();
 
+app.MapGet("/transactions", async (IDocumentStore store, CancellationToken ct) =>
+{
+    await using var session = store.LightweightSession();
+    var txs = await Marten.QueryableExtensions.ToListAsync(session.Query<Transaction>(), ct);
+    return Results.Ok(txs);
+});
+
 app.MapGet("/transactions/{id}", async (string id, IDocumentStore store, CancellationToken ct) =>
 {
     await using var session = store.LightweightSession();
-    var tx = await session.Events.AggregateStreamAsync<Transaction>(id, token: ct);
+    var tx = await session.LoadAsync<Transaction>(id, ct);
     return tx is null ? Results.NotFound() : Results.Ok(tx);
 });
 
