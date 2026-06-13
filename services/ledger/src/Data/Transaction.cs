@@ -34,6 +34,6 @@ public sealed record Transaction(string Id,
                                                               recorded.Category,
                                                               recorded.SchemaVersion);
 
-    public static Transaction Apply(CategoryOverridden overridden, Transaction transaction) =>
-        transaction with { Category = overridden.Category, CategoryOverridden = true };
+    public static Transaction Apply(Transaction current, CategoryOverridden @event) =>
+        current with { Category = @event.Category, CategoryOverridden = true };
 }

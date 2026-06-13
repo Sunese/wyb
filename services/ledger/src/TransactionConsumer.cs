@@ -1,13 +1,22 @@
 using System.Diagnostics;
+using System.Net.Sockets;
 using System.Text;
+using System.Text.Json;
 using Confluent.Kafka;
+using JasperFx.Events;
+using Marten;
+using Marten.Exceptions;
+using Npgsql;
 using OpenTelemetry.Context.Propagation;
+using Wyb.Ledger.Data;
+using Wyb.Ledger.Events;
 
 namespace Wyb.Ledger;
 
 public class TransactionConsumer(
     IConsumer<string, string> consumer,
-    ILogger<TransactionConsumer> logger)
+    ILogger<TransactionConsumer> logger,
+    IDocumentStore documentStore)
     : BackgroundService
 {
     private static readonly ActivitySource ActivitySource = new("Wyb.Ledger");
@@ -55,7 +64,7 @@ public class TransactionConsumer(
 
                     logger.LogInformation("Received message at {TopicPartitionOffset}: {Key} = {Value}",
                         result.TopicPartitionOffset, result.Message.Key, result.Message.Value);
-                    await HandleAsync(result, stoppingToken);
+                    await HandleAsync(result, activity, stoppingToken);
                     logger.LogInformation("Finished processing message at {TopicPartitionOffset}", result.TopicPartitionOffset);
 
                     // At-least-once: commit only after successful processing.
@@ -78,10 +87,48 @@ public class TransactionConsumer(
         }
     }
 
-    private async Task HandleAsync(ConsumeResult<string, string> result, CancellationToken ct)
+    private async Task HandleAsync(ConsumeResult<string, string> result, Activity? activity, CancellationToken ct)
     {
-        logger.LogInformation("Handling message at {TopicPartitionOffset}: {Key} = {Value}",
-            result.TopicPartitionOffset, result.Message.Key, result.Message.Value);
+        logger.LogInformation("Handling message at {TopicPartitionOffset}", result.TopicPartitionOffset);
+        try
+        {
+            var receivedEvent = JsonSerializer.Deserialize<TransactionRecorded>(result.Message.Value, new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true,
+                PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower
+            })
+                ?? throw new JsonException("Deserialized message value is null");
+            await using var session = documentStore.LightweightSession();
+
+            var streamState = await session.Events.FetchStreamStateAsync(receivedEvent.DedupKey, ct);
+            if (streamState != null)
+            {
+                activity?.SetTag("transaction.duplicate", true);
+                activity?.SetStatus(ActivityStatusCode.Ok);
+                logger.LogWarning("Duplicate transaction detected for DedupKey {DedupKey}. Skipping...", receivedEvent.DedupKey);
+                return; // Idempotent handling: skip duplicates
+            }
+
+            session.Events.StartStream<Transaction>(receivedEvent.DedupKey, receivedEvent);
+            await session.SaveChangesAsync(ct);
+        }
+        catch (JsonException ex)
+        {
+            logger.LogError(ex, "Failed to deserialize message value: {Value}", result.Message.Value);
+            return; // Skip processing this message
+        }
+        catch (ExistingStreamIdCollisionException ex)
+        {
+            activity?.SetTag("transaction.duplicate", true);
+            activity?.SetStatus(ActivityStatusCode.Ok);
+            logger.LogWarning(ex, "Duplicate transaction detected. Skipping...");
+            return; // Idempotent handling: skip duplicates
+        }
+
+
+
+        // session.Events.Append(result.Message.Key, );
         // result.Message.Key, result.Message.Value (JSON), result.Message.Headers (traceparent)
+
     }
 }
