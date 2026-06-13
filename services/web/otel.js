@@ -5,12 +5,12 @@ import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentation
 // Reads OTEL_EXPORTER_OTLP_ENDPOINT, OTEL_SERVICE_NAME, OTEL_RESOURCE_ATTRIBUTES,
 // and OTEL_EXPORTER_OTLP_HEADERS from env automatically.
 const sdk = new NodeSDK({
-    traceExporter: new OTLPTraceExporter(),
-    instrumentations: [getNodeAutoInstrumentations()],
+	traceExporter: new OTLPTraceExporter(),
+	instrumentations: [getNodeAutoInstrumentations()]
 });
 
 sdk.start();
 
 process.on('SIGTERM', () => {
-    sdk.shutdown().finally(() => process.exit(0));
+	sdk.shutdown().finally(() => process.exit(0));
 });
