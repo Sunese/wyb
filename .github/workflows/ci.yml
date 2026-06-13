@@ -23,7 +23,7 @@ jobs:
           dotnet-version: "10.0.x"
 
       - name: Restore
-        run: dotnet restore Wyb.slnx
+        run: dotnet restore services/ledger/tests/Wyb.Ledger.Tests
 
       - name: Test
         run: dotnet test services/ledger/tests/Wyb.Ledger.Tests --no-restore --logger "console;verbosity=minimal"
@@ -40,7 +40,7 @@ jobs:
           dotnet-version: "10.0.x"
 
       - name: Restore
-        run: dotnet restore Wyb.slnx
+        run: dotnet restore services/ledger/tests/Wyb.Ledger.IntegrationTests
 
       - name: Test
         run: dotnet test services/ledger/tests/Wyb.Ledger.IntegrationTests --no-restore --logger "console;verbosity=minimal"
@@ -96,6 +96,10 @@ jobs:
       - name: Install dependencies
         working-directory: services/web
         run: npm ci
+
+      - name: Install Playwright browsers
+        working-directory: services/web
+        run: npx playwright install --with-deps chromium
 
       - name: Type-check
         working-directory: services/web
