@@ -66,11 +66,19 @@ var categorize = builder.AddUvicornApp("categorize", "../services/categorize", "
     .WaitFor(rules)
     .WithEnvironment("PYTHONUNBUFFERED", "1");
 
+var detectDb = postgres.AddDatabase("detect-db");
+
 builder.AddUvicornApp("detect", "../services/detect", "detect.main:app")
+    .WithUv()
+    .WithHttpEndpoint(port: 5500, env: "PORT")
     .WithOtlpExporter()
     .WithReference(kafka)
     .WaitFor(kafka)
-    .WithUv();
+    .WithReference(detectDb)
+    .WaitFor(detectDb)
+    .WithReference(ledger)
+    .WaitFor(ledger)
+    .WithEnvironment("PYTHONUNBUFFERED", "1");
 
 // SvelteKit frontend
 builder.AddViteApp("web", "../services/web")
