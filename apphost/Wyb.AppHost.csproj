@@ -17,6 +17,8 @@
     <PackageReference Include="Aspire.Hosting.Python" Version="13.4.2" />
     <PackageReference Include="CommunityToolkit.Aspire.Hosting.Golang" Version="13.1.1" />
     <PackageReference Include="CommunityToolkit.Aspire.Hosting.SQLite" Version="13.1.1" />
+    <!-- Force transitive MessagePack to patched version (GHSA-hv8m-jj95-wg3x) -->
+    <PackageReference Include="MessagePack" Version="3.1.7" />
   </ItemGroup>
 
   <ItemGroup>
