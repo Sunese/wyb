@@ -21,4 +21,10 @@
     <ProjectReference Include="..\..\..\shared\Wyb.ServiceDefaults\Wyb.ServiceDefaults.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+      <_Parameter1>Wyb.Ledger.IntegrationTests</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+
 </Project>

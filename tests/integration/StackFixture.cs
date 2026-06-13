@@ -22,6 +22,7 @@ public sealed class StackFixture : IAsyncLifetime
     public HttpClient Categorize { get; private set; } = null!;
     public HttpClient Detect { get; private set; } = null!;
     public HttpClient Ingest { get; private set; } = null!;
+    public HttpClient Ledger { get; private set; } = null!;
 
     public async Task InitializeAsync()
     {
@@ -49,6 +50,7 @@ public sealed class StackFixture : IAsyncLifetime
         Categorize = App.CreateHttpClient("categorize");
         Detect = App.CreateHttpClient("detect");
         Ingest = App.CreateHttpClient("ingest");
+        Ledger = App.CreateHttpClient("ledger");
 
         // The Go/Python services don't register Aspire health checks — poll them.
         await WaitForHttpAsync(Rules, "/rules");
@@ -102,6 +104,7 @@ public sealed class StackFixture : IAsyncLifetime
         Categorize.Dispose();
         Detect.Dispose();
         Ingest.Dispose();
+        Ledger.Dispose();
         await App.DisposeAsync();
     }
 
