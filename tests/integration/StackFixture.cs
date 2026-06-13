@@ -67,7 +67,10 @@ public sealed class StackFixture : IAsyncLifetime
 
     private async Task WarmUpPipelineAsync()
     {
-        var timeout = TimeSpan.FromSeconds(5);
+        // Allow extra time for Kafka consumer group rebalancing, which can take
+        // several seconds when the main AppHost is already running and shares the
+        // session-lifetime Kafka container.
+        var timeout = TimeSpan.FromSeconds(30);
         var description = $"WARMUP_{Guid.NewGuid():N}";
         var sentinel = JsonSerializer.Serialize(new
         {
@@ -79,6 +82,8 @@ public sealed class StackFixture : IAsyncLifetime
             amount_minor = 0,
             currency = "DKK",
             raw_description = description,
+            dedup_key = description,
+            imported_at = DateTimeOffset.UtcNow,
         });
 
         await KafkaTestClient.ProduceAsync(Bootstrap, "transaction.imported", sentinel);

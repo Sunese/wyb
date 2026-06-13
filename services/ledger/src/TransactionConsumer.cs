@@ -111,6 +111,10 @@ public class TransactionConsumer(
         {
             logger.LogError(ex, "Failed to deserialize message value: {Value}", result.Message.Value);
         }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Unhandled exception processing message at {TopicPartitionOffset}", result.TopicPartitionOffset);
+        }
     }
 
     /// <summary>

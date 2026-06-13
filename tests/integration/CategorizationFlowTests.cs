@@ -61,6 +61,9 @@ public class CategorizationFlowTests(StackFixture fixture)
 
         try
         {
+            // Wait for categorize's rule cache to expire (TTL = 10 s) before publishing
+            // the test transaction, so the new rule is picked up on the next fetch.
+            await Task.Delay(TimeSpan.FromSeconds(12));
             await KafkaTestClient.ProduceAsync(fixture.Bootstrap, "transaction.imported", MakeEvent(description));
 
             var result = await ConsumeEnrichedFor(description);
@@ -90,6 +93,9 @@ public class CategorizationFlowTests(StackFixture fixture)
 
         try
         {
+            // Wait for categorize's rule/alias cache to expire (TTL = 10 s) so the new
+            // merchant alias is picked up on the next fetch.
+            await Task.Delay(TimeSpan.FromSeconds(12));
             await KafkaTestClient.ProduceAsync(fixture.Bootstrap, "transaction.imported", MakeEvent(description));
 
             var result = await ConsumeEnrichedFor(description);
