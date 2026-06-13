@@ -43,4 +43,11 @@ if (app.Environment.IsDevelopment())
 
 app.MapDefaultEndpoints();
 
+app.MapGet("/transactions/{id}", async (string id, IDocumentStore store, CancellationToken ct) =>
+{
+    await using var session = store.LightweightSession();
+    var tx = await session.Events.AggregateStreamAsync<Transaction>(id, token: ct);
+    return tx is null ? Results.NotFound() : Results.Ok(tx);
+});
+
 app.Run();

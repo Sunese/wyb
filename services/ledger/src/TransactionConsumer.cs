@@ -98,37 +98,47 @@ public class TransactionConsumer(
                 PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower
             })
                 ?? throw new JsonException("Deserialized message value is null");
-            await using var session = documentStore.LightweightSession();
 
-            var streamState = await session.Events.FetchStreamStateAsync(receivedEvent.DedupKey, ct);
-            if (streamState != null)
+            var recorded = await RecordTransactionAsync(documentStore, receivedEvent, ct);
+            if (!recorded)
             {
                 activity?.SetTag("transaction.duplicate", true);
                 activity?.SetStatus(ActivityStatusCode.Ok);
-                logger.LogWarning("Duplicate transaction detected for DedupKey {DedupKey}. Skipping...", receivedEvent.DedupKey);
-                return; // Idempotent handling: skip duplicates
+                logger.LogWarning("Duplicate transaction for DedupKey {DedupKey}. Skipping.", receivedEvent.DedupKey);
             }
-
-            session.Events.StartStream<Transaction>(receivedEvent.DedupKey, receivedEvent);
-            await session.SaveChangesAsync(ct);
         }
         catch (JsonException ex)
         {
             logger.LogError(ex, "Failed to deserialize message value: {Value}", result.Message.Value);
-            return; // Skip processing this message
         }
-        catch (ExistingStreamIdCollisionException ex)
+        catch (Exception ex)
         {
-            activity?.SetTag("transaction.duplicate", true);
-            activity?.SetStatus(ActivityStatusCode.Ok);
-            logger.LogWarning(ex, "Duplicate transaction detected. Skipping...");
-            return; // Idempotent handling: skip duplicates
+            logger.LogError(ex, "Unhandled exception processing message at {TopicPartitionOffset}", result.TopicPartitionOffset);
         }
+    }
 
+    /// <summary>
+    /// Appends a <see cref="TransactionRecorded"/> event to a new Marten stream keyed by
+    /// <see cref="TransactionRecorded.DedupKey"/>. Returns false (and does nothing) when the
+    /// stream already exists — this is the idempotency guard against Kafka redeliveries.
+    /// </summary>
+    internal static async Task<bool> RecordTransactionAsync(
+        IDocumentStore store, TransactionRecorded recorded, CancellationToken ct = default)
+    {
+        await using var session = store.LightweightSession();
+        try
+        {
+            var state = await session.Events.FetchStreamStateAsync(recorded.DedupKey, ct);
+            if (state is not null) return false;
 
-
-        // session.Events.Append(result.Message.Key, );
-        // result.Message.Key, result.Message.Value (JSON), result.Message.Headers (traceparent)
-
+            session.Events.StartStream<Transaction>(recorded.DedupKey, recorded);
+            await session.SaveChangesAsync(ct);
+            return true;
+        }
+        catch (ExistingStreamIdCollisionException)
+        {
+            // Lost a race between FetchStreamStateAsync and StartStream — still idempotent.
+            return false;
+        }
     }
 }

@@ -22,6 +22,7 @@ public sealed class StackFixture : IAsyncLifetime
     public HttpClient Categorize { get; private set; } = null!;
     public HttpClient Detect { get; private set; } = null!;
     public HttpClient Ingest { get; private set; } = null!;
+    public HttpClient Ledger { get; private set; } = null!;
 
     public async Task InitializeAsync()
     {
@@ -49,6 +50,7 @@ public sealed class StackFixture : IAsyncLifetime
         Categorize = App.CreateHttpClient("categorize");
         Detect = App.CreateHttpClient("detect");
         Ingest = App.CreateHttpClient("ingest");
+        Ledger = App.CreateHttpClient("ledger");
 
         // The Go/Python services don't register Aspire health checks — poll them.
         await WaitForHttpAsync(Rules, "/rules");
@@ -65,7 +67,10 @@ public sealed class StackFixture : IAsyncLifetime
 
     private async Task WarmUpPipelineAsync()
     {
-        var timeout = TimeSpan.FromSeconds(5);
+        // Allow extra time for Kafka consumer group rebalancing, which can take
+        // several seconds when the main AppHost is already running and shares the
+        // session-lifetime Kafka container.
+        var timeout = TimeSpan.FromSeconds(30);
         var description = $"WARMUP_{Guid.NewGuid():N}";
         var sentinel = JsonSerializer.Serialize(new
         {
@@ -77,6 +82,8 @@ public sealed class StackFixture : IAsyncLifetime
             amount_minor = 0,
             currency = "DKK",
             raw_description = description,
+            dedup_key = description,
+            imported_at = DateTimeOffset.UtcNow,
         });
 
         await KafkaTestClient.ProduceAsync(Bootstrap, "transaction.imported", sentinel);
@@ -102,6 +109,7 @@ public sealed class StackFixture : IAsyncLifetime
         Categorize.Dispose();
         Detect.Dispose();
         Ingest.Dispose();
+        Ledger.Dispose();
         await App.DisposeAsync();
     }
 
