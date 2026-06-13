@@ -142,6 +142,40 @@ func TestReplayHandler_ContinuesAfterParseError(t *testing.T) {
 	}
 }
 
+func TestReplayHandler_SetsNonEmptyDedupKey(t *testing.T) {
+	rawDir := t.TempDir()
+	copyFile(t, "../../testdata/danskebank_salary_20250101_20251231.csv",
+		filepath.Join(rawDir, "salary.csv"))
+
+	pub := &mockPublisher{}
+	handler := replayHandler(rawDir, pub, otel.Tracer("test"))
+
+	req := httptest.NewRequest(http.MethodPost, "/replay", nil)
+	rec := httptest.NewRecorder()
+	handler(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+
+	pub.mu.Lock()
+	defer pub.mu.Unlock()
+	for i, ev := range pub.events {
+		if ev.DedupKey == "" {
+			t.Errorf("event[%d] has empty DedupKey", i)
+		}
+	}
+
+	// Keys must also be unique across events.
+	seen := make(map[string]int)
+	for i, ev := range pub.events {
+		if prev, ok := seen[ev.DedupKey]; ok {
+			t.Errorf("event[%d] and event[%d] share DedupKey %q", prev, i, ev.DedupKey)
+		}
+		seen[ev.DedupKey] = i
+	}
+}
+
 func TestParseFile_HandlesArchivedFilename(t *testing.T) {
 	rawDir := t.TempDir()
 	// Simulate how the watcher archives files: timestamp prefix prepended.
