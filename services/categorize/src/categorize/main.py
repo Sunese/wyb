@@ -3,6 +3,7 @@ import logging
 import os
 import re
 import threading
+import time
 from contextlib import asynccontextmanager
 
 import httpx
@@ -29,16 +30,35 @@ _rules_url = (
 )
 
 
+_CACHE_TTL = 10  # seconds
+
+_cache_lock = threading.Lock()
+_cached_rules: list = []
+_cached_aliases: list = []
+_cache_expires_at: float = 0.0
+
+
 def _fetch_rules_and_aliases() -> tuple[list, list]:
-    with httpx.Client(base_url=_rules_url, timeout=5.0) as client:
-        rules = client.get("/rules").raise_for_status().json()
-        merchants = client.get("/merchants").raise_for_status().json()
-    aliases = [
-        {**alias, "merchantName": m["canonicalName"], "defaultCategory": m["defaultCategory"]}
-        for m in merchants
-        for alias in m["aliases"]
-    ]
-    return rules, aliases
+    global _cached_rules, _cached_aliases, _cache_expires_at
+
+    with _cache_lock:
+        if time.monotonic() < _cache_expires_at:
+            return _cached_rules, _cached_aliases
+
+        with httpx.Client(base_url=_rules_url, timeout=5.0) as client:
+            rules = client.get("/rules").raise_for_status().json()
+            merchants = client.get("/merchants").raise_for_status().json()
+        aliases = [
+            {**alias, "merchantName": m["canonicalName"], "defaultCategory": m["defaultCategory"]}
+            for m in merchants
+            for alias in m["aliases"]
+        ]
+
+        _cached_rules = rules
+        _cached_aliases = aliases
+        _cache_expires_at = time.monotonic() + _CACHE_TTL
+        logger.debug("Rules cache refreshed: %d rules, %d aliases", len(rules), len(aliases))
+        return rules, aliases
 
 
 # ── Pure categorization logic (unit-testable) ─────────────────────────────────
