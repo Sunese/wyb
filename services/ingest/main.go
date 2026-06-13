@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -77,6 +78,7 @@ func main() {
 		events := make([]TransactionImportedEvent, len(rows))
 		for i, row := range rows {
 			events[i] = TransactionImportedEvent{
+				DedupKey:       ComputeDedupKey(row),
 				SchemaVersion:  1,
 				SourceFile:     row.SourceFile,
 				RowIndex:       row.RowIndex,
@@ -127,4 +129,10 @@ func main() {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	_ = server.Shutdown(shutdownCtx)
+}
+
+func ComputeDedupKey(row Row) string {
+	// Create a hash based on: account_id, date, amount_minor, currency, description
+	json := fmt.Sprintf("%s|%s|%d|%s|%s", row.AccountID, row.Date.Format("2006-01-02"), row.AmountMinor, row.Currency, row.Description)
+	return fmt.Sprintf("%x", sha256.Sum256([]byte(json)))
 }

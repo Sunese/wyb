@@ -16,6 +16,7 @@ import (
 )
 
 type TransactionImportedEvent struct {
+	DedupKey       string `json:"dedup_key"`
 	SchemaVersion  int    `json:"schema_version"`
 	SourceFile     string `json:"source_file"`
 	RowIndex       int    `json:"row_index"`
