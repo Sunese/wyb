@@ -46,9 +46,9 @@ export const actions: Actions = {
 		const res = await fetch(`${ledgerUrl()}/transactions/${id}/category`, {
 			method: 'PATCH',
 			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ category }),
+			body: JSON.stringify({ category })
 		});
 
 		if (!res.ok) error(res.status, 'failed to update category');
-	},
+	}
 };
