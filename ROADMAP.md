@@ -62,7 +62,7 @@
       emailed statements or scheduled downloads.
   - Optional power-user path:
     - `aisp` service (alongside `ingest`) wrapping Enable
-      Banking's API and emitting the same RabbitMQ events as
+      Banking's API and emitting the same Kafka events as
       CSV ingest. Same schema_version discipline. The ledger
       doesn't care which source produced an event.
     - Gated behind explicit per-user config: the user signs up

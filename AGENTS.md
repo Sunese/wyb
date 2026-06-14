@@ -8,14 +8,15 @@ Self-hosted personal finance app (monitoring, not budgeting). Polyglot monorepo 
 |------|----------|------|
 | `apphost/` | C# (.NET 10) | Aspire AppHost — orchestration + dashboard |
 | `shared/Wyb.ServiceDefaults/` | C# | OTel / health / discovery for .NET services |
-| `services/ledger/` | C# (.NET 10) | Postgres-backed canonical store, owns the DB |
-| `services/ingest/` | Go | Watches a directory for CSVs, publishes to RabbitMQ |
-| `services/categorize/` | Python (FastAPI + uv) | Consumes transaction events, placeholder |
-| `services/detect/` | Python (FastAPI + uv) | Anomaly detection, placeholder |
+| `services/ledger/` | C# (.NET 10) | Canonical store, owns `ledger-db` |
+| `services/ingest/` | Go | Watches a directory for CSVs, publishes to Kafka |
+| `services/rules/` | Python (FastAPI + uv) | Category rules + merchant aliases store, owns `rules-db` |
+| `services/categorize/` | Python (FastAPI + uv) | Consumes `transaction.imported`, applies rules/merchants, publishes `transaction.categorized` |
+| `services/detect/` | Python (FastAPI + uv) | Subscription detection (M3); owns `detect-db`. Anomaly detection planned (M4) |
 | `services/web/` | SvelteKit (adapter-node) | UI |
 | `tests/integration/` | C# (xunit) | Full AppHost boot via `Aspire.Hosting.Testing` |
 
-Infra: Postgres + RabbitMQ — managed by Aspire, persistent volumes.
+Infra: Postgres + Kafka — managed by Aspire, persistent volumes.
 
 ## Run
 
@@ -38,7 +39,8 @@ dotnet test tests/integration
 # Go (ingest)
 go test ./services/ingest/...
 
-# Python (categorize, detect)
+# Python (rules, categorize, detect)
+uv run --directory services/rules pytest
 uv run --directory services/categorize pytest
 uv run --directory services/detect pytest
 
@@ -63,8 +65,8 @@ npm run format         # prettier --write
 - **Transaction dedup**: `hash(account_id, date, amount_minor, currency, normalized_description)`. Stable, derivable, survives reimports.
 - **Raw imports are sacred**: every CSV stored verbatim, never modified. Canonical store is *derived* from raw + code.
 - **Schema versioning**: every event payload includes `schema_version`.
-- **One Postgres**, owned by ledger. No DB-per-service (yet).
-- **Event format**: JSON over RabbitMQ. Protobuf later.
+- **One Postgres instance**, database-per-service (`ledger-db`, `rules-db`, `detect-db`). Services never read another service's tables — cross-service data goes over HTTP + Kafka.
+- **Event format**: JSON over Kafka. Protobuf later.
 - **No auth yet**: single-user behind WireGuard.
 
 ## Aspire gotchas
@@ -73,7 +75,7 @@ npm run format         # prettier --write
 - Do NOT call `WithHttpEndpoint()` on Vite resources — duplicate endpoint error.
 - FastAPI: use `lifespan` async context manager, not `@app.on_event`.
 - SvelteKit OTel: `WithEnvironment("NODE_OPTIONS", "--import ./otel.js")` — SDK must start before HTTP server.
-- Aspire injects env vars like `ConnectionStrings__rabbit` and `services__ledger__http__0` — read those, don't hardcode.
+- Aspire injects env vars like `ConnectionStrings__kafka` and `services__ledger__http__0` — read those, don't hardcode.
 - Zsh: quote bracket deps like `'uvicorn[standard]'`.
 
 ## MCP servers configured
