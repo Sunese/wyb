@@ -4,6 +4,19 @@
 
 	let { data }: { data: PageData } = $props();
 
+	// Nudge the user to re-import once their data goes stale, so stale data isn't
+	// mistaken for missing subscription charges. Detect treats anything past this
+	// window as unconfirmable rather than missed.
+	const STALE_AFTER_DAYS = 10;
+
+	const nudge = $derived(
+		data.importStatus &&
+			data.importStatus.daysSinceLastImport != null &&
+			data.importStatus.daysSinceLastImport >= STALE_AFTER_DAYS
+			? data.importStatus
+			: null
+	);
+
 	const CATEGORY_COLORS: Record<string, string> = {
 		Income: 'bg-green-100 text-green-800',
 		Groceries: 'bg-lime-100 text-lime-800',
@@ -53,6 +66,21 @@
 </script>
 
 <main class="mx-auto max-w-6xl p-6">
+	{#if nudge}
+		<div
+			role="status"
+			class="mb-6 rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-700/50 dark:bg-amber-950/40 dark:text-amber-200"
+		>
+			<p class="font-medium">Time to re-import</p>
+			<p class="mt-1">
+				Your last import was {nudge.daysSinceLastImport} days ago{nudge.coverageEnd
+					? `, covering through ${formatDate(nudge.coverageEnd)}`
+					: ''}. Drop a fresh bank export so subscription and missing-charge detection stays
+				accurate.
+			</p>
+		</div>
+	{/if}
+
 	<h1 class="mb-6 text-2xl font-semibold">Transactions</h1>
 
 	{#if data.transactions.length === 0}
