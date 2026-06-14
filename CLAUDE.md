@@ -43,19 +43,20 @@ npm run format         # prettier --write
 apphost/                       Aspire AppHost — wires everything together
 shared/Wyb.ServiceDefaults/    OTel / health / discovery shared by .NET services
 services/
-  ledger/                      .NET 10 Web API — canonical store, owns Postgres
+  ledger/                      .NET 10 Web API — canonical store, owns ledger-db
   ingest/                      Go — watches a directory, parses CSVs, publishes events
-  categorize/                  Python (FastAPI + uv) — consumes transaction events
-  detect/                      Python (FastAPI + uv) — anomaly detection (placeholder)
+  rules/                       Python (FastAPI + uv) — category rules + merchant aliases store, owns rules-db
+  categorize/                  Python (FastAPI + uv) — consumes transaction events, applies rules/merchants
+  detect/                      Python (FastAPI + uv) — subscription detection (M3); anomaly detection planned (M4)
   web/                         SvelteKit (adapter-node) — UI
 tests/integration/             C# xunit — boots full AppHost via Aspire.Hosting.Testing
 ```
 
-**Data flow:** ingest drops CSVs → publishes `transaction.imported` events to RabbitMQ → ledger consumes, deduplicates, and stores in Postgres → web reads from ledger over HTTP.
+**Data flow:** ingest drops CSVs → publishes `transaction.imported` events to Kafka → categorize consumes, applies rules/merchant aliases, republishes `transaction.categorized` → ledger consumes, deduplicates, and stores in Postgres; detect also consumes `transaction.categorized` to find recurring charges and emits `subscription.detected` → web reads from ledger over HTTP.
 
-**One Postgres server, database-per-service.** Each service owns its own logical database (`ledger-db`, `rules-db`) and never reads another service's tables — cross-service data goes over HTTP + RabbitMQ. We deliberately run a single Postgres _instance_ hosting those databases, not a separate Postgres server per service.
+**One Postgres server, database-per-service.** Each service owns its own logical database (`ledger-db`, `rules-db`, `detect-db`) and never reads another service's tables — cross-service data goes over HTTP + Kafka. We deliberately run a single Postgres _instance_ hosting those databases, not a separate Postgres server per service.
 
-OTel traces propagate across all services via `traceparent` in HTTP headers and RabbitMQ message properties. Aspire injects `OTEL_*` env vars automatically.
+OTel traces propagate across all services via `traceparent` in HTTP headers and Kafka message headers. Aspire injects `OTEL_*` env vars automatically.
 
 ## Category contract
 
@@ -79,8 +80,8 @@ These tests are your dev-time CI for this contract.
 - **Time**: `timestamptz` UTC in DB, `Europe/Copenhagen` displayed in the UI.
 - **Transaction dedup key**: `hash(account_id, date, amount_minor, currency, normalized_description)`. Stable, derivable, survives reimports. Idempotency lives in ledger — ingest can republish freely.
 - **Raw imports are sacred**: every CSV ingested is stored verbatim and never modified. The canonical store is derived from raw data + code.
-- **Schema versioning**: every RabbitMQ event payload includes `schema_version`.
-- **Event format**: JSON over RabbitMQ for now; Protobuf planned later.
+- **Schema versioning**: every Kafka event payload includes `schema_version`.
+- **Event format**: JSON over Kafka for now; Protobuf planned later.
 - **No auth yet**: single-user, assumed to be behind WireGuard.
 
 ## Aspire gotchas
@@ -89,7 +90,7 @@ These tests are your dev-time CI for this contract.
 - Do **not** call `WithHttpEndpoint()` on Vite resources — causes a duplicate endpoint error.
 - FastAPI services must use `lifespan` async context manager, not `@app.on_event`.
 - SvelteKit OTel requires `WithEnvironment("NODE_OPTIONS", "--import ./otel.js")` in the AppHost so the SDK starts before SvelteKit's HTTP server.
-- Aspire injects env vars like `ConnectionStrings__rabbit` and `services__ledger__http__0` — read those, never hardcode URLs or connection strings.
+- Aspire injects env vars like `ConnectionStrings__kafka` and `services__ledger__http__0` — read those, never hardcode URLs or connection strings.
 - Zsh: quote bracket-spec deps like `'uvicorn[standard]'`.
 
 ## MCP servers
@@ -175,6 +176,6 @@ not core code, and version them.
   e.g. event-sourcing the ledger is a textbook match for an auditable
   finance store. Still apply judgment: call out when a choice is pure
   operational toil with thin learning payoff for a single-user app
-  (e.g. swapping RabbitMQ for Kafka), and don't reflexively reach for
+  (e.g. swapping Kafka for another broker), and don't reflexively reach for
   novelty where it buys nothing. Boring infrastructure is fine as a
   default, not as a hard rule.

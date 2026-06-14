@@ -1,8 +1,8 @@
 # Categorization
 
-WYB categorizes transactions automatically when they are imported. The `categorize` service listens for `transaction.imported` events on RabbitMQ, applies rules and merchant aliases, then publishes `transaction.categorized` with an added `category` (and optionally `merchant_name`).
+WYB categorizes transactions automatically when they are imported. The `categorize` service listens for `transaction.imported` events on Kafka, applies rules and merchant aliases, then publishes `transaction.categorized` with an added `category` (and optionally `merchant_name`).
 
-Rules and merchants are stored in the `rules` service (SQLite) and exposed over HTTP. `categorize` fetches them fresh on every message.
+Rules and merchants are stored in the `rules` service (Postgres, `rules-db`) and exposed over HTTP. `categorize` fetches them fresh on every message.
 
 ## Two-layer system
 
@@ -71,7 +71,7 @@ DELETE /aliases/{id}                   Delete a single alias
 
 `services/rules/seed.json` contains a starter set of rules and merchants for Danske Bank. The `rules` service loads it automatically on first boot if the database is empty — no manual steps needed.
 
-To add more seeds, edit `seed.json` and delete the SQLite DB so the service re-seeds on next startup (or add the entries via the API directly — the seed only runs once on an empty DB).
+To add more seeds, edit `seed.json` and reset `rules-db` so the service re-seeds on next startup (or add the entries via the API directly — the seed only runs once on an empty DB).
 
 ## Design notes
 
