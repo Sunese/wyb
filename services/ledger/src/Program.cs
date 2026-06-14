@@ -59,4 +59,13 @@ app.MapGet("/transactions/{id}", async (string id, IDocumentStore store, Cancell
     return tx is null ? Results.NotFound() : Results.Ok(tx);
 });
 
+// Import freshness for the "you haven't imported in N days" nudge. The UI uses this to
+// distinguish a genuinely missing subscription charge from one we simply haven't imported yet.
+app.MapGet("/imports/status", async (IDocumentStore store, CancellationToken ct) =>
+{
+    await using var session = store.LightweightSession();
+    var txs = await Marten.QueryableExtensions.ToListAsync(session.Query<Transaction>(), ct);
+    return Results.Ok(ImportStatusResponse.From(txs, DateTimeOffset.UtcNow));
+});
+
 app.Run();

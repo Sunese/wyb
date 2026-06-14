@@ -90,4 +90,38 @@ public class LedgerApiTests(StackFixture fixture)
         var res = await Ledger.GetAsync($"/transactions/{Guid.NewGuid():N}");
         Assert.Equal(HttpStatusCode.NotFound, res.StatusCode);
     }
+
+    [Fact]
+    public async Task ImportStatus_ReflectsImportedTransactions()
+    {
+        var dedupKey = Guid.NewGuid().ToString("N");
+
+        await KafkaTestClient.ProduceAsync(
+            fixture.Bootstrap, "transaction.categorized",
+            MakeCategorizedEvent(dedupKey, $"INTTEST_IMPORTSTATUS_{dedupKey}"));
+
+        var caughtUp = await KafkaTestClient.WaitForGroupCaughtUpAsync(
+            fixture.Bootstrap, "ledger", "transaction.categorized", Timeout);
+        Assert.True(caughtUp, "Ledger consumer did not catch up to transaction.categorized");
+
+        var res = await Ledger.GetAsync("/imports/status");
+        Assert.Equal(HttpStatusCode.OK, res.StatusCode);
+
+        var status = await res.Content.ReadFromJsonAsync<JsonElement>(Json);
+        Assert.NotEqual(JsonValueKind.Null, status.GetProperty("lastImportAt").ValueKind);
+        Assert.NotEqual(JsonValueKind.Null, status.GetProperty("coverageEnd").ValueKind);
+        Assert.True(status.GetProperty("transactionCount").GetInt32() >= 1);
+
+        // The account from MakeCategorizedEvent appears in the per-account breakdown.
+        var found = false;
+        foreach (var account in status.GetProperty("accounts").EnumerateArray())
+        {
+            if (account.GetProperty("accountId").GetString() == "test-account")
+            {
+                found = true;
+                break;
+            }
+        }
+        Assert.True(found, "expected 'test-account' in the import-status account breakdown");
+    }
 }

@@ -14,6 +14,22 @@ export interface Transaction {
 	categoryOverridden: boolean;
 }
 
+export interface AccountImportStatus {
+	accountId: string | null;
+	lastImportAt: string | null;
+	coverageEnd: string | null;
+	daysSinceLastImport: number | null;
+	transactionCount: number;
+}
+
+export interface ImportStatus {
+	lastImportAt: string | null;
+	coverageEnd: string | null;
+	daysSinceLastImport: number | null;
+	transactionCount: number;
+	accounts: AccountImportStatus[];
+}
+
 function ledgerUrl() {
 	const url = env.services__ledger__http__0;
 	if (!url) error(500, 'ledger service URL not configured');
@@ -25,16 +41,20 @@ export const load: PageServerLoad = async ({ url }) => {
 	const offset = url.searchParams.get('offset') ?? '0';
 	const base = ledgerUrl();
 
-	const [txRes, catRes] = await Promise.all([
+	const [txRes, catRes, importRes] = await Promise.all([
 		fetch(`${base}/transactions?limit=${limit}&offset=${offset}`),
-		fetch(`${base}/categories`)
+		fetch(`${base}/categories`),
+		// Import status drives an optional nudge — never let it break the page.
+		fetch(`${base}/imports/status`).catch(() => null)
 	]);
 	if (!txRes.ok) error(txRes.status, 'failed to fetch transactions from ledger');
 	if (!catRes.ok) error(catRes.status, 'failed to fetch categories from ledger');
 
 	const transactions: Transaction[] = await txRes.json();
 	const categories: string[] = await catRes.json();
-	return { transactions, categories };
+	const importStatus: ImportStatus | null =
+		importRes && importRes.ok ? await importRes.json() : null;
+	return { transactions, categories, importStatus };
 };
 
 export const actions: Actions = {
