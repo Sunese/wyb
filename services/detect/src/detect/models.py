@@ -32,7 +32,7 @@ class Subscription(SQLModel, table=True):
     price_changed: bool = False
     last_charge_date: date
     next_expected_date: date
-    status: str   # "active" | "missed"
+    status: str   # "active" | "missed" | "unconfirmed"
     first_seen_date: date
     occurrence_count: int
     annual_estimate_minor: int

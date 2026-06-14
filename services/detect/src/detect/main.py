@@ -10,6 +10,7 @@ from confluent_kafka import Consumer, Producer
 from fastapi import FastAPI
 from opentelemetry import context as otel_context
 from opentelemetry import propagate, trace
+from sqlalchemy import func
 from sqlmodel import Session, select
 
 from detect.db import init_db, make_engine
@@ -53,6 +54,16 @@ def _emit(event_type: str, payload: dict, tracer) -> None:
 
 
 # ── Core detection logic ──────────────────────────────────────────────────────
+
+def _data_frontier(db: Session) -> date | None:
+    """Latest charge date we've imported across all merchants.
+
+    This is how far our data actually reaches; subscriptions are only judged
+    "missed" relative to this frontier, never relative to wall-clock time, so
+    a stale import can't manufacture false missed-charge alarms.
+    """
+    return db.exec(select(func.max(MerchantCharge.charge_date))).one()
+
 
 def _charges_for_merchant(db: Session, merchant: str, currency: str) -> list[ChargeRecord]:
     rows = db.exec(
@@ -177,8 +188,9 @@ def process_transaction(tx: dict, tracer) -> None:
         db.commit()
 
         charges = _charges_for_merchant(db, merchant, currency)
+        frontier = _data_frontier(db)
 
-    results = detect_subscriptions(charges)
+    results = detect_subscriptions(charges, data_frontier=frontier)
     for detected in results:
         with Session(_engine) as db:
             _upsert_subscription(db, detected, tracer)
@@ -187,17 +199,38 @@ def process_transaction(tx: dict, tracer) -> None:
 # ── Missed-subscription scanner (scheduled) ───────────────────────────────────
 
 def scan_missed(tracer) -> None:
-    """Emit subscription_missed events for subscriptions that are overdue."""
+    """Re-evaluate overdue subscriptions against the data frontier.
+
+    A subscription is only marked ``missed`` (and alarmed on) when our
+    imported data extends past its expected charge date. If it's overdue
+    only on the calendar — because the user hasn't imported recently — it's
+    marked ``unconfirmed`` and stays silent; the UI nudges a re-import.
+    """
     today = date.today()
     with Session(_engine) as db:
-        subs = db.exec(select(Subscription).where(Subscription.status == "active")).all()
+        frontier = _data_frontier(db) or today
+        subs = db.exec(
+            select(Subscription).where(Subscription.status.in_(["active", "unconfirmed"]))
+        ).all()
         for sub in subs:
             tolerance = sub.cadence_days * 0.5
-            if (today - sub.next_expected_date).days > tolerance:
-                sub.status = "missed"
-                sub.updated_at = datetime.now(timezone.utc)
-                db.add(sub)
-                db.commit()
+            overdue_days = lambda ref: (ref - sub.next_expected_date).days  # noqa: E731
+            if overdue_days(frontier) > tolerance:
+                new_status = "missed"
+            elif overdue_days(today) > tolerance:
+                new_status = "unconfirmed"
+            else:
+                new_status = "active"
+
+            if new_status == sub.status:
+                continue
+
+            sub.status = new_status
+            sub.updated_at = datetime.now(timezone.utc)
+            db.add(sub)
+            db.commit()
+
+            if new_status == "missed":
                 _emit(
                     "subscription_missed",
                     {

@@ -169,6 +169,51 @@ def test_status_missed_when_overdue():
     assert result[0].status == "missed"
 
 
+# ── Status: import-lag awareness ──────────────────────────────────────────────
+
+def test_status_unconfirmed_when_overdue_but_import_is_stale():
+    # The charge is overdue on the calendar, but our data only reaches a few
+    # days past the last charge — we simply haven't imported the window where
+    # the next charge would appear. Must NOT be reported as missed.
+    last = TODAY - timedelta(days=60)
+    charges = make_charges("Netflix", "DKK", 10900, last - timedelta(days=150), 30, 5)
+    charges.append(ChargeRecord("Netflix", -10900, "DKK", last))
+    result = detect_subscriptions(
+        charges, today=TODAY, data_frontier=last + timedelta(days=5)
+    )
+    assert result[0].status == "unconfirmed"
+
+
+def test_status_missed_when_data_covers_the_gap():
+    # Same overdue charge, but the data frontier extends past the expected
+    # date, so the absence is real.
+    last = TODAY - timedelta(days=60)
+    charges = make_charges("Netflix", "DKK", 10900, last - timedelta(days=150), 30, 5)
+    charges.append(ChargeRecord("Netflix", -10900, "DKK", last))
+    result = detect_subscriptions(charges, today=TODAY, data_frontier=TODAY)
+    assert result[0].status == "missed"
+
+
+def test_stale_import_never_reports_missed():
+    # Regression for the false positive: a subscription overdue only because
+    # the user hasn't imported in months must never be flagged missed.
+    last = TODAY - timedelta(days=120)
+    charges = make_charges("Netflix", "DKK", 10900, last - timedelta(days=150), 30, 5)
+    charges.append(ChargeRecord("Netflix", -10900, "DKK", last))
+    result = detect_subscriptions(
+        charges, today=TODAY, data_frontier=last + timedelta(days=2)
+    )
+    assert result[0].status != "missed"
+
+
+def test_frontier_defaults_to_today():
+    # Without an explicit frontier, behaviour collapses to a wall-clock verdict.
+    last = TODAY - timedelta(days=60)
+    charges = make_charges("Netflix", "DKK", 10900, last - timedelta(days=150), 30, 5)
+    charges.append(ChargeRecord("Netflix", -10900, "DKK", last))
+    assert detect_subscriptions(charges, today=TODAY)[0].status == "missed"
+
+
 # ── Annual estimate ───────────────────────────────────────────────────────────
 
 def test_annual_estimate_monthly():
