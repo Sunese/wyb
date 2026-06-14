@@ -22,3 +22,13 @@ Orchestrated with Aspire in dev, Postgres + Kafka for state and events, OpenTele
 ```bash
 aspire run
 ```
+
+## License
+
+WYB is licensed under the [GNU Affero General Public License v3.0](LICENSE)
+(`AGPL-3.0-only`).
+
+In short: you're free to run, study, modify, and share it — but if you run a
+modified version as a network service, you must offer your users the
+corresponding source. Copyright © 2026 Sune Engtorp.
+

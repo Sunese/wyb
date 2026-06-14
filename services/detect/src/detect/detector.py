@@ -39,7 +39,7 @@ class DetectedSubscription:
     price_changed: bool
     last_charge_date: date
     next_expected_date: date
-    status: str                 # "active" | "missed"
+    status: str                 # "active" | "missed" | "unconfirmed"
     first_seen_date: date
     occurrence_count: int
     annual_estimate_minor: int
@@ -55,15 +55,28 @@ def _classify_cadence(median_days: float) -> str | None:
 def detect_subscriptions(
     charges: list[ChargeRecord],
     today: date | None = None,
+    data_frontier: date | None = None,
 ) -> list[DetectedSubscription]:
     """
     Analyse a list of charges and return those that look like
     recurring subscriptions.
 
     ``today`` is injectable so unit tests can pin the reference date.
+
+    ``data_frontier`` is the latest transaction date our imported data
+    actually covers (typically ``max(charge_date)`` across all charges).
+    It is what gates the "missed" verdict: a subscription is only reported
+    as ``missed`` when we have data extending *past* the expected charge
+    date and the charge still isn't there. When the calendar says a charge
+    is overdue but our data doesn't yet reach that far — i.e. the user
+    simply hasn't imported recently — the status is ``unconfirmed`` instead,
+    and no missed-charge alarm is raised. Defaults to ``today`` (no import
+    lag), which reproduces a pure wall-clock verdict.
     """
     if today is None:
         today = date.today()
+    if data_frontier is None:
+        data_frontier = today
 
     # Only debits from a known merchant.
     debits = [c for c in charges if c.amount_minor < 0 and c.merchant_name]
@@ -112,7 +125,17 @@ def detect_subscriptions(
 
         next_expected = last.date + timedelta(days=median_interval)
         tolerance = timedelta(days=median_interval * MISSED_TOLERANCE_FACTOR)
-        status = "missed" if today > next_expected + tolerance else "active"
+        overdue_after = next_expected + tolerance
+        if data_frontier > overdue_after:
+            # Our data covers past when the charge was due and it's absent:
+            # a genuine missed charge.
+            status = "missed"
+        elif today > overdue_after:
+            # Overdue on the calendar, but our imported data doesn't reach
+            # that far yet — can't tell missed from un-imported. Don't alarm.
+            status = "unconfirmed"
+        else:
+            status = "active"
 
         annual_estimate = round(current_amount * (365.0 / median_interval))
 
