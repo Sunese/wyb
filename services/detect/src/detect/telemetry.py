@@ -43,4 +43,5 @@ def _configure_logging() -> None:
     root = logging.getLogger()
     root.setLevel(logging.INFO)
     root.addHandler(handler)
+    logging.getLogger("detect").setLevel(logging.DEBUG)
 

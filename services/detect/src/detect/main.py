@@ -166,6 +166,7 @@ def process_transaction(tx: dict, tracer) -> None:
     amount = tx.get("amount_minor", 0)
 
     if not merchant or amount >= 0:
+        logger.debug('unknown merchant or amount >= 0')
         return  # credits and unknown merchants are not our concern
 
     transaction_id = tx.get("dedup_key") or tx.get("id", "")
@@ -176,6 +177,7 @@ def process_transaction(tx: dict, tracer) -> None:
         if db.exec(
             select(MerchantCharge).where(MerchantCharge.transaction_id == transaction_id)
         ).first():
+            logger.debug('skipping transaction - already stored')
             return  # already seen; idempotent
 
         db.add(MerchantCharge(
@@ -186,6 +188,7 @@ def process_transaction(tx: dict, tracer) -> None:
             charge_date=charge_date,
         ))
         db.commit()
+        logger.info('added transaction')
 
         charges = _charges_for_merchant(db, merchant, currency)
         frontier = _data_frontier(db)
