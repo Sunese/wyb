@@ -68,7 +68,7 @@ var categorize = builder.AddUvicornApp("categorize", "../services/categorize", "
 
 var detectDb = postgres.AddDatabase("detect-db");
 
-builder.AddUvicornApp("detect", "../services/detect", "detect.main:app")
+var detect = builder.AddUvicornApp("detect", "../services/detect", "detect.main:app")
     .WithUv()
     .WithHttpEndpoint(port: 5500, env: "PORT")
     .WithOtlpExporter()
@@ -85,6 +85,7 @@ builder.AddViteApp("web", "../services/web")
     .WithEndpoint("http", e => e.Port = 5173)
     .WithReference(ledger)
     .WithReference(rules)
+    .WithReference(detect)
     .WaitFor(ledger)
     .WithEnvironment("NODE_OPTIONS", "--import ./otel.js");
 

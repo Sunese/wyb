@@ -7,7 +7,7 @@ from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta, timezone
 
 from confluent_kafka import Consumer, Producer
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from opentelemetry import context as otel_context
 from opentelemetry import propagate, trace
 from sqlalchemy import func
@@ -351,9 +351,22 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="wyb-detect", lifespan=lifespan)
 
 
+def get_db():
+    with Session(_engine) as session:
+        yield session
+
+
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get("/subscriptions")
+def list_subscriptions(db: Session = Depends(get_db)) -> list[Subscription]:
+    from sqlalchemy import desc as sa_desc
+    return db.exec(
+        select(Subscription).order_by(sa_desc(Subscription.annual_estimate_minor))
+    ).all()
 
 
 def main() -> None:
