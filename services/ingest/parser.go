@@ -43,9 +43,11 @@ type BankParser interface {
 	Parse(r io.Reader, sourceName, accountID string) ([]Row, error)
 }
 
-// registry holds all registered bank parsers.
+// registry holds all registered bank parsers. More-specific variants first so
+// DetectHeader matching is unambiguous when headers share a prefix.
 var registry = []BankParser{
-	&danskeParser{},
+	&danskeIosParser{},
+	&danskeDesktopParser{},
 }
 
 // ParseFile auto-detects the bank format from file content and parses the file.
@@ -130,25 +132,17 @@ func sniffHeader(data []byte) ([]string, error) {
 	return nil, fmt.Errorf("could not determine delimiter")
 }
 
-// ── Danske Bank ──────────────────────────────────────────────────────────────
-
-type danskeParser struct{}
-
-func (d *danskeParser) BankName() string { return "danskebank" }
-
-func (d *danskeParser) DetectHeader(header []string) bool {
-	if len(header) < 3 {
-		return false
-	}
-	// Danske Bank exports "Beløb" but their exporter sometimes emits U+FFFD
-	// in place of ø, so we match on the stable ASCII parts only.
-	col2 := strings.ToLower(header[2])
-	return strings.EqualFold(header[0], "Dato") &&
-		strings.EqualFold(header[1], "Tekst") &&
-		strings.HasPrefix(col2, "bel") && strings.HasSuffix(col2, "b")
+// isBelob returns true for the "Beløb" column header, tolerating the ø/U+FFFD
+// substitution that Danske's exporter sometimes emits.
+func isBelob(s string) bool {
+	s = strings.ToLower(s)
+	return strings.HasPrefix(s, "bel") && strings.HasSuffix(s, "b")
 }
 
-func (d *danskeParser) Parse(r io.Reader, sourceName, accountID string) ([]Row, error) {
+// parseDanskeCSV is the shared CSV reading loop for both Danske parsers.
+// minCols is the minimum number of fields required per data row.
+// descIdx and amountIdx are the zero-based column positions of description and amount.
+func parseDanskeCSV(r io.Reader, sourceName, accountID string, minCols, descIdx, amountIdx int) ([]Row, error) {
 	cr := csv.NewReader(r)
 	cr.Comma = ';'
 
@@ -165,7 +159,7 @@ func (d *danskeParser) Parse(r io.Reader, sourceName, accountID string) ([]Row, 
 		if err != nil {
 			return nil, fmt.Errorf("row %d: %w", rowIndex, err)
 		}
-		if len(record) < 3 {
+		if len(record) < minCols {
 			continue
 		}
 
@@ -173,9 +167,9 @@ func (d *danskeParser) Parse(r io.Reader, sourceName, accountID string) ([]Row, 
 		if err != nil {
 			return nil, fmt.Errorf("row %d: date %q: %w", rowIndex, record[0], err)
 		}
-		amount, err := parseDanishAmount(record[2])
+		amount, err := parseDanishAmount(record[amountIdx])
 		if err != nil {
-			return nil, fmt.Errorf("row %d: amount %q: %w", rowIndex, record[2], err)
+			return nil, fmt.Errorf("row %d: amount %q: %w", rowIndex, record[amountIdx], err)
 		}
 
 		rows = append(rows, Row{
@@ -183,13 +177,53 @@ func (d *danskeParser) Parse(r io.Reader, sourceName, accountID string) ([]Row, 
 			Date:        date,
 			AmountMinor: amount,
 			Currency:    "DKK",
-			Description: strings.TrimSpace(record[1]),
+			Description: strings.TrimSpace(record[descIdx]),
 			SourceFile:  sourceName,
 			RowIndex:    rowIndex,
 		})
 	}
-
 	return rows, nil
+}
+
+// ── Danske Bank — desktop export ──────────────────────────────────────────────
+// Header: Dato;Tekst;Beløb;Saldo;Status;Afstemt   (values are double-quoted)
+
+type danskeDesktopParser struct{}
+
+func (d *danskeDesktopParser) BankName() string { return "danskebank-desktop" }
+
+func (d *danskeDesktopParser) DetectHeader(header []string) bool {
+	return len(header) >= 3 &&
+		strings.EqualFold(header[0], "Dato") &&
+		strings.EqualFold(header[1], "Tekst") &&
+		isBelob(header[2])
+}
+
+func (d *danskeDesktopParser) Parse(r io.Reader, sourceName, accountID string) ([]Row, error) {
+	// col 0: Dato, col 1: Tekst, col 2: Beløb
+	return parseDanskeCSV(r, sourceName, accountID, 3, 1, 2)
+}
+
+// ── Danske Bank — iOS export ──────────────────────────────────────────────────
+// Header: Dato;Kategori;Underkategori;Tekst;Beløb;Saldo;Status;Afstemt
+// Values are not quoted. Two bank-category columns precede Tekst.
+
+type danskeIosParser struct{}
+
+func (d *danskeIosParser) BankName() string { return "danskebank-ios" }
+
+func (d *danskeIosParser) DetectHeader(header []string) bool {
+	return len(header) >= 5 &&
+		strings.EqualFold(header[0], "Dato") &&
+		strings.EqualFold(header[1], "Kategori") &&
+		strings.EqualFold(header[2], "Underkategori") &&
+		strings.EqualFold(header[3], "Tekst") &&
+		isBelob(header[4])
+}
+
+func (d *danskeIosParser) Parse(r io.Reader, sourceName, accountID string) ([]Row, error) {
+	// col 0: Dato, col 3: Tekst, col 4: Beløb
+	return parseDanskeCSV(r, sourceName, accountID, 5, 3, 4)
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

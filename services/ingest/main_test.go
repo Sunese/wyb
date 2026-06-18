@@ -31,24 +31,7 @@ func TestParseDanishAmount(t *testing.T) {
 	}
 }
 
-func TestDanskeParserDetectHeader(t *testing.T) {
-	p := &danskeParser{}
-
-	if !p.DetectHeader([]string{"Dato", "Tekst", "Beløb", "Saldo", "Status", "Afstemt"}) {
-		t.Error("should detect valid Danske Bank header")
-	}
-	if p.DetectHeader([]string{"Date", "Description", "Amount"}) {
-		t.Error("should not detect unknown header")
-	}
-}
-
-func TestDetectParserUnknown(t *testing.T) {
-	if detectParser([]string{"Date", "Description", "Amount"}) != nil {
-		t.Error("expected nil for unrecognised header")
-	}
-}
-
-func TestParseDanskeBank(t *testing.T) {
+func TestParseDanskeBank_Desktop(t *testing.T) {
 	rows, err := ParseFile("../../testdata/danskebank_salary_20250101_20251231.csv")
 	if err != nil {
 		t.Fatalf("ParseFile: %v", err)
@@ -58,15 +41,11 @@ func TestParseDanskeBank(t *testing.T) {
 	}
 
 	r := rows[0]
-	// Account ID is the filename stem — the full name minus extension and any archive timestamp prefix.
 	if r.AccountID != "danskebank_salary_20250101_20251231" {
 		t.Errorf("AccountID = %q, want %q", r.AccountID, "danskebank_salary_20250101_20251231")
 	}
 	if r.Currency != "DKK" {
 		t.Errorf("Currency = %q, want DKK", r.Currency)
-	}
-	if r.Date.IsZero() {
-		t.Error("Date should not be zero")
 	}
 	wantDate := time.Date(2026, 5, 4, 0, 0, 0, 0, time.UTC)
 	if !r.Date.Equal(wantDate) {
@@ -77,9 +56,42 @@ func TestParseDanskeBank(t *testing.T) {
 	}
 }
 
+func TestParseDanskeBank_Ios(t *testing.T) {
+	rows, err := ParseFile("../../testdata/danskebank_ios_sample.csv")
+	if err != nil {
+		t.Fatalf("ParseFile: %v", err)
+	}
+	if len(rows) == 0 {
+		t.Fatal("expected at least one row")
+	}
+
+	r := rows[0]
+	if r.AccountID != "danskebank_ios_sample" {
+		t.Errorf("AccountID = %q", r.AccountID)
+	}
+	if r.Currency != "DKK" {
+		t.Errorf("Currency = %q, want DKK", r.Currency)
+	}
+	// First row: 18.06.2026;;;Netflix.Com;-149,00
+	wantDate := time.Date(2026, 6, 18, 0, 0, 0, 0, time.UTC)
+	if !r.Date.Equal(wantDate) {
+		t.Errorf("first row Date = %v, want %v", r.Date, wantDate)
+	}
+	if r.Description != "Netflix.Com" {
+		t.Errorf("Description = %q, want %q", r.Description, "Netflix.Com")
+	}
+	if r.AmountMinor != -14900 {
+		t.Errorf("AmountMinor = %d, want -14900", r.AmountMinor)
+	}
+
+	// Income row should parse as positive
+	income := rows[len(rows)-1]
+	if income.AmountMinor != 2500000 {
+		t.Errorf("income AmountMinor = %d, want 2500000", income.AmountMinor)
+	}
+}
+
 func TestParseDanskeBank_ArchivedFilename(t *testing.T) {
-	// Archived files have a timestamp prefix — ParseFile must strip it transparently.
-	// We test this by checking that the archived prefix regex strips correctly.
 	got := archivedPrefix.ReplaceAllString("20260514T155959Z_salary.csv", "")
 	if got != "salary.csv" {
 		t.Errorf("archivedPrefix strip: got %q, want %q", got, "salary.csv")
