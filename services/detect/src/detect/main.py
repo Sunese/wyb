@@ -11,7 +11,7 @@ from fastapi import FastAPI
 from opentelemetry import context as otel_context
 from opentelemetry import propagate, trace
 from sqlalchemy import func
-from sqlmodel import Session, select
+from sqlmodel import Session, col, select
 
 from detect.db import init_db, make_engine
 from detect.detector import ChargeRecord, DetectedSubscription, detect_subscriptions
@@ -213,7 +213,7 @@ def scan_missed(tracer) -> None:
     with Session(_engine) as db:
         frontier = _data_frontier(db) or today
         subs = db.exec(
-            select(Subscription).where(Subscription.status.in_(["active", "unconfirmed"]))
+            select(Subscription).where(col(Subscription.status).in_(["active", "unconfirmed"]))
         ).all()
         for sub in subs:
             tolerance = sub.cadence_days * 0.5
