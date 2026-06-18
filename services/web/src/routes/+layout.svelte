@@ -1,6 +1,8 @@
 <script lang="ts">
 	import './layout.css';
 	import favicon from '$lib/assets/favicon.svg';
+	import { page } from '$app/state';
+	import { resolve } from '$app/paths';
 	import { onMount } from 'svelte';
 
 	let { children } = $props();
@@ -20,10 +22,31 @@
 
 <svelte:head><link rel="icon" href={favicon} /></svelte:head>
 
+<nav class="border-b border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-950">
+	<div class="mx-auto flex max-w-6xl items-center gap-6 px-6 py-3">
+		<a
+			href={resolve('/')}
+			class="text-sm font-medium {page.url.pathname === '/'
+				? 'text-gray-900 dark:text-gray-100'
+				: 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'}"
+		>
+			Transactions
+		</a>
+		<a
+			href={resolve('/subscriptions')}
+			class="text-sm font-medium {page.url.pathname === '/subscriptions'
+				? 'text-gray-900 dark:text-gray-100'
+				: 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'}"
+		>
+			Subscriptions
+		</a>
+	</div>
+</nav>
+
 <button
 	type="button"
 	onclick={toggleTheme}
-	class="fixed right-4 top-4 z-50 rounded-full border border-gray-200 bg-white p-2 text-gray-600 shadow-sm hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800"
+	class="fixed right-4 top-3 z-50 rounded-full border border-gray-200 bg-white p-2 text-gray-600 shadow-sm hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800"
 	title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
 	aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
 >
