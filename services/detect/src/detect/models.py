@@ -60,3 +60,11 @@ class SubscriptionResponse(BaseModel):
     annual_estimate_minor: int
     detected_at: datetime
     updated_at: datetime
+
+
+class SubscriptionCharge(SQLModel, table=True):
+    """Links a detected subscription to the MerchantCharge rows that back it."""
+    __tablename__ = "subscription_charges"
+
+    subscription_id: str = Field(foreign_key="subscriptions.id", primary_key=True)
+    merchant_charge_id: str = Field(foreign_key="merchant_charges.id", primary_key=True)

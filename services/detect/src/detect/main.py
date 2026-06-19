@@ -18,7 +18,7 @@ from sqlmodel import Session, col, select
 
 from detect.db import init_db, make_engine
 from detect.detector import ChargeRecord, DetectedSubscription, detect_subscriptions
-from detect.models import MerchantCharge, Subscription, SubscriptionResponse
+from detect.models import MerchantCharge, Subscription, SubscriptionCharge, SubscriptionResponse
 from detect.telemetry import configure_telemetry
 
 logger = logging.getLogger(__name__)
@@ -147,14 +147,16 @@ def _data_frontier(db: Session) -> date | None:
     return db.exec(select(func.max(MerchantCharge.charge_date))).one()
 
 
-def _charges_for_description(db: Session, raw_description: str, currency: str) -> list[ChargeRecord]:
+def _charges_for_description(
+    db: Session, raw_description: str, currency: str
+) -> tuple[list[ChargeRecord], list[str]]:
     rows = db.exec(
         select(MerchantCharge).where(
             MerchantCharge.raw_description == raw_description,
             MerchantCharge.currency == currency,
         )
     ).all()
-    return [
+    records = [
         ChargeRecord(
             raw_description=r.raw_description,
             amount_minor=r.amount_minor,
@@ -163,11 +165,30 @@ def _charges_for_description(db: Session, raw_description: str, currency: str) -
         )
         for r in rows
     ]
+    return records, [r.id for r in rows]
+
+
+def _sync_subscription_charges(
+    db: Session, subscription_id: str, charge_ids: list[str]
+) -> None:
+    existing = {
+        row.merchant_charge_id
+        for row in db.exec(
+            select(SubscriptionCharge).where(
+                SubscriptionCharge.subscription_id == subscription_id
+            )
+        ).all()
+    }
+    for cid in charge_ids:
+        if cid not in existing:
+            db.add(SubscriptionCharge(subscription_id=subscription_id, merchant_charge_id=cid))
+    db.commit()
 
 
 def _upsert_subscription(
     db: Session,
     detected: DetectedSubscription,
+    charge_ids: list[str],
     tracer,
 ) -> None:
     now = datetime.now(timezone.utc)
@@ -179,7 +200,7 @@ def _upsert_subscription(
     ).first()
 
     if existing is None:
-        db.add(Subscription(
+        new_sub = Subscription(
             raw_description=detected.raw_description,
             currency=detected.currency,
             cadence_days=detected.cadence_days,
@@ -195,8 +216,11 @@ def _upsert_subscription(
             annual_estimate_minor=detected.annual_estimate_minor,
             detected_at=now,
             updated_at=now,
-        ))
+        )
+        db.add(new_sub)
         db.commit()
+        db.refresh(new_sub)
+        _sync_subscription_charges(db, new_sub.id, charge_ids)
         _emit("subscription_detected", _sub_payload(detected), tracer)
         return
 
@@ -219,6 +243,7 @@ def _upsert_subscription(
     existing.updated_at = now
     db.add(existing)
     db.commit()
+    _sync_subscription_charges(db, existing.id, charge_ids)
 
     if price_changed:
         _emit("subscription_price_changed", _sub_payload(detected), tracer)
@@ -274,13 +299,13 @@ def process_transaction(tx: dict, tracer) -> None:
         db.commit()
         logger.info("added transaction: %s", raw_description)
 
-        charges = _charges_for_description(db, raw_description, currency)
+        charges, charge_ids = _charges_for_description(db, raw_description, currency)
         frontier = _data_frontier(db)
 
     results = detect_subscriptions(charges, data_frontier=frontier)
     for detected in results:
         with Session(_engine) as db:
-            _upsert_subscription(db, detected, tracer)
+            _upsert_subscription(db, detected, charge_ids, tracer)
 
 
 # ── Missed-subscription scanner (scheduled) ───────────────────────────────────
@@ -452,6 +477,26 @@ def list_subscriptions(db: Session = Depends(get_db)) -> list[SubscriptionRespon
         select(Subscription).order_by(sa_desc(Subscription.annual_estimate_minor))
     ).all()
     return [_to_response(s) for s in rows]
+
+
+@app.get("/subscriptions/{subscription_id}/charges")
+def get_subscription_charges(
+    subscription_id: str, db: Session = Depends(get_db)
+) -> list[MerchantCharge]:
+    from sqlalchemy import desc as sa_desc
+    links = db.exec(
+        select(SubscriptionCharge).where(
+            SubscriptionCharge.subscription_id == subscription_id
+        )
+    ).all()
+    if not links:
+        return []
+    charge_ids = [lnk.merchant_charge_id for lnk in links]
+    return db.exec(
+        select(MerchantCharge)
+        .where(col(MerchantCharge.id).in_(charge_ids))
+        .order_by(sa_desc(MerchantCharge.charge_date))
+    ).all()
 
 
 def main() -> None:
