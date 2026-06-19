@@ -1,6 +1,7 @@
 package main
 
 import (
+	"strings"
 	"testing"
 	"time"
 )
@@ -88,6 +89,85 @@ func TestSniffHeader_UnknownFormat(t *testing.T) {
 	_, err := sniffHeader(data)
 	if err == nil {
 		t.Error("expected error for single-column data")
+	}
+}
+
+// ── danskeParser ─────────────────────────────────────────────────────────────
+
+const danskeCSV = `Dato;Tekst;Beløb;Saldo;Status;Afstemt
+04.05.2026;NETFLIX.COM;-119,00;42.199,55;Udført;Ja
+06.05.2026;SPOTIFY P0411234567;-99,00;42.100,55;Udført;Ja
+04.05.2026;Løn;3.500,00;45.699,55;Udført;Ja
+`
+
+func TestDanskeParser_DetectHeader(t *testing.T) {
+	p := &danskeParser{}
+	if !p.DetectHeader([]string{"Dato", "Tekst", "Beløb", "Saldo", "Status", "Afstemt"}) {
+		t.Error("should detect standard Danske Bank header")
+	}
+	if p.DetectHeader([]string{"Dato", "Kategori", "Underkategori", "Tekst", "Beløb"}) {
+		t.Error("should not detect Kategori-format header")
+	}
+}
+
+func TestDanskeParser_Parse(t *testing.T) {
+	p := &danskeParser{}
+	rows, err := p.Parse(strings.NewReader(danskeCSV), "test.csv", "salary")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(rows) != 3 {
+		t.Fatalf("expected 3 rows, got %d", len(rows))
+	}
+	if rows[0].Description != "NETFLIX.COM" {
+		t.Errorf("description: got %q", rows[0].Description)
+	}
+	if rows[0].AmountMinor != -11900 {
+		t.Errorf("amount: got %d", rows[0].AmountMinor)
+	}
+	if rows[2].AmountMinor != 350000 {
+		t.Errorf("credit amount: got %d", rows[2].AmountMinor)
+	}
+}
+
+// ── danskeParserWithCategories ────────────────────────────────────────────────
+
+const danskeCatCSV = `Dato;Kategori;Underkategori;Tekst;Beløb;Saldo;Status;Afstemt
+18.06.2026;Abonnementer;Streaming;Netflix.Com;-149,00;13.665,48;Udført;Nej
+15.06.2026;Ukategoriseret;Ukategoriseret;MobilePay Podimo ApS;-129,00;13.814,48;Udført;Ja
+01.06.2026;;;Løn;25.000,00;42.000,00;Udført;Ja
+`
+
+func TestDanskeParserWithCategories_DetectHeader(t *testing.T) {
+	p := &danskeParserWithCategories{}
+	if !p.DetectHeader([]string{"Dato", "Kategori", "Underkategori", "Tekst", "Beløb", "Saldo", "Status", "Afstemt"}) {
+		t.Error("should detect Kategori-format header")
+	}
+	if p.DetectHeader([]string{"Dato", "Tekst", "Beløb", "Saldo", "Status", "Afstemt"}) {
+		t.Error("should not detect standard header")
+	}
+}
+
+func TestDanskeParserWithCategories_Parse(t *testing.T) {
+	p := &danskeParserWithCategories{}
+	rows, err := p.Parse(strings.NewReader(danskeCatCSV), "budget.csv", "budget")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(rows) != 3 {
+		t.Fatalf("expected 3 rows, got %d", len(rows))
+	}
+	if rows[0].Description != "Netflix.Com" {
+		t.Errorf("description: got %q", rows[0].Description)
+	}
+	if rows[0].AmountMinor != -14900 {
+		t.Errorf("amount: got %d, want -14900", rows[0].AmountMinor)
+	}
+	if rows[2].AmountMinor != 2500000 {
+		t.Errorf("credit: got %d", rows[2].AmountMinor)
+	}
+	if rows[0].AccountID != "budget" {
+		t.Errorf("accountID: got %q", rows[0].AccountID)
 	}
 }
 

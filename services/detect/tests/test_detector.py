@@ -27,7 +27,7 @@ def make_charges(
     """Evenly-spaced (or slightly jittered) debit charges."""
     return [
         ChargeRecord(
-            merchant_name=merchant,
+            raw_description=merchant,
             amount_minor=-abs(amount_minor),
             currency=currency,
             date=start + timedelta(days=interval_days * i + (i % 2) * jitter_days),
@@ -65,7 +65,7 @@ def test_monthly_subscription_detected():
     result = detect_subscriptions(txs, today=TODAY)
     assert len(result) == 1
     sub = result[0]
-    assert sub.merchant_name == "Netflix"
+    assert sub.raw_description == "Netflix"
     assert sub.cadence_label == "monthly"
     assert sub.current_amount_minor == 10900
     assert sub.occurrence_count == 6
@@ -228,7 +228,7 @@ def test_multiple_merchants_detected_independently():
     netflix = make_charges("Netflix", "DKK", 10900, START, 30, 6)
     spotify = make_charges("Spotify", "DKK", 9900, START, 30, 6)
     result = detect_subscriptions(netflix + spotify, today=TODAY)
-    assert {s.merchant_name for s in result} == {"Netflix", "Spotify"}
+    assert {s.raw_description for s in result} == {"Netflix", "Spotify"}
 
 
 def test_same_merchant_different_currencies_separate():
@@ -248,3 +248,43 @@ def test_empty_transactions():
 def test_single_transaction_per_merchant():
     txs = [ChargeRecord("Netflix", -10900, "DKK", START)]
     assert detect_subscriptions(txs, today=TODAY) == []
+
+
+# ── Amount stability ──────────────────────────────────────────────────────────
+
+def test_variable_amount_not_detected():
+    # A grocery store visited monthly with different amounts each time is NOT a subscription.
+    charges = [
+        ChargeRecord("Meny", -34218, "DKK", START),
+        ChargeRecord("Meny", -41090, "DKK", START + timedelta(days=30)),
+    ]
+    assert detect_subscriptions(charges, today=TODAY) == []
+
+
+def test_stable_amount_detected():
+    charges = [
+        ChargeRecord("Netflix", -11900, "DKK", START),
+        ChargeRecord("Netflix", -11900, "DKK", START + timedelta(days=30)),
+    ]
+    assert len(detect_subscriptions(charges, today=TODAY)) == 1
+
+
+def test_single_price_change_still_detected():
+    # 5 months stable + one price increase: the dominant amount is 10900 (5/6),
+    # so it's still a subscription, just one that raised its price.
+    charges = make_charges("Netflix", "DKK", 10900, START, 30, 5)
+    charges.append(ChargeRecord("Netflix", -12900, "DKK", charges[-1].date + timedelta(days=30)))
+    result = detect_subscriptions(charges, today=TODAY)
+    assert len(result) == 1
+    assert result[0].price_changed is True
+
+
+def test_two_equal_amount_groups_not_detected():
+    # Two charges at price A and two at price B (no single dominant price): not a subscription.
+    charges = [
+        ChargeRecord("Netto", -18845, "DKK", START),
+        ChargeRecord("Netto", -21125, "DKK", START + timedelta(days=30)),
+        ChargeRecord("Netto", -18845, "DKK", START + timedelta(days=60)),
+        ChargeRecord("Netto", -21125, "DKK", START + timedelta(days=90)),
+    ]
+    assert detect_subscriptions(charges, today=TODAY) == []

@@ -72,6 +72,31 @@
       "canonicalName": "Thansen",
       "defaultCategory": "Auto",
       "aliases": [{ "pattern": "Thansen", "matchType": "Contains" }]
+    },
+    {
+      "canonicalName": "Netflix",
+      "defaultCategory": "Subscriptions",
+      "aliases": [{ "pattern": "NETFLIX", "matchType": "Contains" }]
+    },
+    {
+      "canonicalName": "Spotify",
+      "defaultCategory": "Subscriptions",
+      "aliases": [{ "pattern": "SPOTIFY", "matchType": "Contains" }]
+    },
+    {
+      "canonicalName": "Fitness World",
+      "defaultCategory": "Health",
+      "aliases": [{ "pattern": "FITNESS WORLD", "matchType": "Contains" }]
+    },
+    {
+      "canonicalName": "Meny",
+      "defaultCategory": "Groceries",
+      "aliases": [{ "pattern": "MENY", "matchType": "StartsWith" }]
+    },
+    {
+      "canonicalName": "Netto",
+      "defaultCategory": "Groceries",
+      "aliases": [{ "pattern": "NETTO", "matchType": "StartsWith" }]
     }
   ]
 }

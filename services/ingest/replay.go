@@ -35,20 +35,7 @@ func replayHandler(rawDir string, pub eventPublisher, tracer trace.Tracer) http.
 				replayErrors = append(replayErrors, fmt.Sprintf("%s: %v", entry.Name(), err))
 				continue
 			}
-			events := make([]TransactionImportedEvent, len(rows))
-			for i, row := range rows {
-				events[i] = TransactionImportedEvent{
-					DedupKey:       ComputeDedupKey(row),
-					SchemaVersion:  1,
-					SourceFile:     row.SourceFile,
-					RowIndex:       row.RowIndex,
-					AccountID:      row.AccountID,
-					Date:           row.Date.Format("2006-01-02"),
-					AmountMinor:    row.AmountMinor,
-					Currency:       row.Currency,
-					RawDescription: row.Description,
-				}
-			}
+			events := rowsToEvents(rows)
 			if err := pub.PublishTransactionImported(r.Context(), tracer, events...); err != nil {
 				replayErrors = append(replayErrors, fmt.Sprintf("%s: %v", entry.Name(), err))
 				continue

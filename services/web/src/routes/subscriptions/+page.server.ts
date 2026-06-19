@@ -22,7 +22,7 @@ export interface Subscription {
 }
 
 function detectUrl() {
-	const url = env.services__detect__http__0;
+	const url = env.services__detect__https__0 || env.services__detect__http__0;
 	if (!url) error(500, 'detect service URL not configured');
 	return url;
 }

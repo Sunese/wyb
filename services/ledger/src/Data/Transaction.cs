@@ -32,7 +32,9 @@ public sealed record Transaction(string Id,
                                                               recorded.RawDescription,
                                                               recorded.ImportedAt,
                                                               recorded.Category,
-                                                              recorded.SchemaVersion);
+                                                              recorded.SchemaVersion,
+                                                              AccountId: recorded.AccountId,
+                                                              MerchantName: recorded.MerchantName);
 
     public static Transaction Apply(Transaction current, CategoryOverridden @event) =>
         current with { Category = @event.Category, CategoryOverridden = true };

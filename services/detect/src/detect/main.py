@@ -2,10 +2,13 @@ import asyncio
 import json
 import logging
 import os
+import re
 import threading
+import time
 from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta, timezone
 
+import httpx
 from confluent_kafka import Consumer, Producer
 from fastapi import Depends, FastAPI
 from opentelemetry import context as otel_context
@@ -15,7 +18,7 @@ from sqlmodel import Session, col, select
 
 from detect.db import init_db, make_engine
 from detect.detector import ChargeRecord, DetectedSubscription, detect_subscriptions
-from detect.models import MerchantCharge, Subscription
+from detect.models import MerchantCharge, Subscription, SubscriptionResponse
 from detect.telemetry import configure_telemetry
 
 logger = logging.getLogger(__name__)
@@ -30,6 +33,85 @@ SCAN_INTERVAL_SECONDS = int(os.environ.get("DETECT_SCAN_INTERVAL_SECONDS", str(6
 _stop = threading.Event()
 _engine = None
 _producer: Producer | None = None
+
+_rules_url = (
+    os.environ.get("services__rules__https__0")
+    or os.environ.get("services__rules__http__0")
+    or ""
+)
+
+_rules_cache_lock = threading.Lock()
+_rules_cache: list = []
+_rules_cache_expires: float = 0.0
+_RULES_CACHE_TTL = 30  # seconds
+
+
+# ── Rules resolution (canonical merchant name at read time) ───────────────────
+
+def _fetch_aliases() -> list:
+    global _rules_cache, _rules_cache_expires
+    with _rules_cache_lock:
+        if time.monotonic() < _rules_cache_expires:
+            return _rules_cache
+        if not _rules_url:
+            return []
+        try:
+            ca_bundle = os.environ.get("CURL_CA_BUNDLE", True)
+            merchants = httpx.get(f"{_rules_url}/merchants", timeout=3.0, verify=ca_bundle).raise_for_status().json()
+            aliases = [
+                {**alias, "canonicalName": m["canonicalName"]}
+                for m in merchants
+                for alias in m["aliases"]
+            ]
+            _rules_cache = aliases
+            _rules_cache_expires = time.monotonic() + _RULES_CACHE_TTL
+        except Exception:
+            logger.warning("Could not fetch merchant aliases from rules service")
+        return _rules_cache
+
+
+def _matches(text: str, pattern: str, match_type: str) -> bool:
+    text_u = text.upper()
+    pattern_u = pattern.upper()
+    if match_type == "Contains":
+        return pattern_u in text_u
+    if match_type == "Exact":
+        return text_u == pattern_u
+    if match_type == "StartsWith":
+        return text_u.startswith(pattern_u)
+    if match_type == "Regex":
+        return bool(re.search(pattern, text, re.IGNORECASE))
+    return False
+
+
+def _resolve_merchant_name(raw_description: str) -> str:
+    """Return canonical merchant name, or raw_description if no alias matches."""
+    for alias in _fetch_aliases():
+        if _matches(raw_description, alias["pattern"], alias["matchType"]):
+            return alias["canonicalName"]
+    return raw_description
+
+
+def _to_response(sub: Subscription) -> SubscriptionResponse:
+    return SubscriptionResponse(
+        id=sub.id,
+        raw_description=sub.raw_description,
+        merchant_name=_resolve_merchant_name(sub.raw_description),
+        currency=sub.currency,
+        cadence_days=sub.cadence_days,
+        cadence_label=sub.cadence_label,
+        current_amount_minor=sub.current_amount_minor,
+        previous_amount_minor=sub.previous_amount_minor,
+        price_changed=sub.price_changed,
+        last_charge_date=sub.last_charge_date,
+        next_expected_date=sub.next_expected_date,
+        status=sub.status,
+        first_seen_date=sub.first_seen_date,
+        occurrence_count=sub.occurrence_count,
+        annual_estimate_minor=sub.annual_estimate_minor,
+        detected_at=sub.detected_at,
+        updated_at=sub.updated_at,
+    )
 
 
 # ── Kafka helpers ─────────────────────────────────────────────────────────────
@@ -65,16 +147,16 @@ def _data_frontier(db: Session) -> date | None:
     return db.exec(select(func.max(MerchantCharge.charge_date))).one()
 
 
-def _charges_for_merchant(db: Session, merchant: str, currency: str) -> list[ChargeRecord]:
+def _charges_for_description(db: Session, raw_description: str, currency: str) -> list[ChargeRecord]:
     rows = db.exec(
         select(MerchantCharge).where(
-            MerchantCharge.merchant_name == merchant,
+            MerchantCharge.raw_description == raw_description,
             MerchantCharge.currency == currency,
         )
     ).all()
     return [
         ChargeRecord(
-            merchant_name=r.merchant_name,
+            raw_description=r.raw_description,
             amount_minor=r.amount_minor,
             currency=r.currency,
             date=r.charge_date,
@@ -91,14 +173,14 @@ def _upsert_subscription(
     now = datetime.now(timezone.utc)
     existing = db.exec(
         select(Subscription).where(
-            Subscription.merchant_name == detected.merchant_name,
+            Subscription.raw_description == detected.raw_description,
             Subscription.currency == detected.currency,
         )
     ).first()
 
     if existing is None:
         db.add(Subscription(
-            merchant_name=detected.merchant_name,
+            raw_description=detected.raw_description,
             currency=detected.currency,
             cadence_days=detected.cadence_days,
             cadence_label=detected.cadence_label,
@@ -146,7 +228,7 @@ def _upsert_subscription(
 
 def _sub_payload(s: DetectedSubscription) -> dict:
     return {
-        "merchant_name": s.merchant_name,
+        "raw_description": s.raw_description,
         "currency": s.currency,
         "cadence_days": s.cadence_days,
         "cadence_label": s.cadence_label,
@@ -161,13 +243,15 @@ def _sub_payload(s: DetectedSubscription) -> dict:
 
 
 def process_transaction(tx: dict, tracer) -> None:
-    """Store a new charge and re-evaluate the subscription for its merchant."""
-    merchant = tx.get("merchant_name")
+    """Store a new debit charge and re-evaluate subscriptions for its description."""
     amount = tx.get("amount_minor", 0)
+    if amount >= 0:
+        return  # credits are not our concern
 
-    if not merchant or amount >= 0:
-        logger.debug('unknown merchant or amount >= 0')
-        return  # credits and unknown merchants are not our concern
+    raw_description = tx.get("raw_description", "").strip()
+    if not raw_description:
+        logger.debug("skipping transaction with empty raw_description")
+        return
 
     transaction_id = tx.get("dedup_key") or tx.get("id", "")
     currency = tx.get("currency", "")
@@ -177,20 +261,20 @@ def process_transaction(tx: dict, tracer) -> None:
         if db.exec(
             select(MerchantCharge).where(MerchantCharge.transaction_id == transaction_id)
         ).first():
-            logger.debug('skipping transaction - already stored')
+            logger.debug("skipping transaction - already stored")
             return  # already seen; idempotent
 
         db.add(MerchantCharge(
             transaction_id=transaction_id,
-            merchant_name=merchant,
+            raw_description=raw_description,
             currency=currency,
             amount_minor=amount,
             charge_date=charge_date,
         ))
         db.commit()
-        logger.info('added transaction')
+        logger.info("added transaction: %s", raw_description)
 
-        charges = _charges_for_merchant(db, merchant, currency)
+        charges = _charges_for_description(db, raw_description, currency)
         frontier = _data_frontier(db)
 
     results = detect_subscriptions(charges, data_frontier=frontier)
@@ -237,7 +321,7 @@ def scan_missed(tracer) -> None:
                 _emit(
                     "subscription_missed",
                     {
-                        "merchant_name": sub.merchant_name,
+                        "raw_description": sub.raw_description,
                         "currency": sub.currency,
                         "cadence_days": sub.cadence_days,
                         "cadence_label": sub.cadence_label,
@@ -362,11 +446,12 @@ def health() -> dict[str, str]:
 
 
 @app.get("/subscriptions")
-def list_subscriptions(db: Session = Depends(get_db)) -> list[Subscription]:
+def list_subscriptions(db: Session = Depends(get_db)) -> list[SubscriptionResponse]:
     from sqlalchemy import desc as sa_desc
-    return db.exec(
+    rows = db.exec(
         select(Subscription).order_by(sa_desc(Subscription.annual_estimate_minor))
     ).all()
+    return [_to_response(s) for s in rows]
 
 
 def main() -> None:

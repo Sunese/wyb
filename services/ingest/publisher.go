@@ -25,6 +25,28 @@ type TransactionImportedEvent struct {
 	AmountMinor    int64  `json:"amount_minor"`
 	Currency       string `json:"currency"`
 	RawDescription string `json:"raw_description"`
+	ImportedAt     string `json:"imported_at"`
+}
+
+// rowsToEvents converts parsed rows to Kafka event structs, stamping ImportedAt at call time.
+func rowsToEvents(rows []Row) []TransactionImportedEvent {
+	importedAt := time.Now().UTC().Format(time.RFC3339)
+	events := make([]TransactionImportedEvent, len(rows))
+	for i, row := range rows {
+		events[i] = TransactionImportedEvent{
+			DedupKey:       ComputeDedupKey(row),
+			SchemaVersion:  1,
+			SourceFile:     row.SourceFile,
+			RowIndex:       row.RowIndex,
+			AccountID:      row.AccountID,
+			Date:           row.Date.Format("2006-01-02"),
+			AmountMinor:    row.AmountMinor,
+			Currency:       row.Currency,
+			RawDescription: row.Description,
+			ImportedAt:     importedAt,
+		}
+	}
+	return events
 }
 
 type PongEvent struct {
