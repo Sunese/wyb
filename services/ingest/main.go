@@ -75,20 +75,7 @@ func main() {
 		if err != nil {
 			return fmt.Errorf("parse: %w", err)
 		}
-		events := make([]TransactionImportedEvent, len(rows))
-		for i, row := range rows {
-			events[i] = TransactionImportedEvent{
-				DedupKey:       ComputeDedupKey(row),
-				SchemaVersion:  1,
-				SourceFile:     row.SourceFile,
-				RowIndex:       row.RowIndex,
-				AccountID:      row.AccountID,
-				Date:           row.Date.Format("2006-01-02"),
-				AmountMinor:    row.AmountMinor,
-				Currency:       row.Currency,
-				RawDescription: row.Description,
-			}
-		}
+		events := rowsToEvents(rows)
 		if err := importedPublisher.PublishTransactionImported(ctx, tracer, events...); err != nil {
 			return fmt.Errorf("publish %s: %w", path, err)
 		}

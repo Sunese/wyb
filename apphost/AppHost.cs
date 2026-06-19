@@ -78,6 +78,8 @@ var detect = builder.AddUvicornApp("detect", "../services/detect", "detect.main:
     .WaitFor(detectDb)
     .WithReference(ledger)
     .WaitFor(ledger)
+    .WithReference(rules)
+    .WaitFor(rules)
     .WithEnvironment("PYTHONUNBUFFERED", "1");
 
 // SvelteKit frontend

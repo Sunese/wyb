@@ -53,7 +53,9 @@ public sealed record AccountImportStatus(
 
         var lastImportAt = rows.Max(t => t.ImportedAt);
         var coverageEnd = rows.Max(t => t.Date);
-        var daysSince = (int)Math.Floor((now - lastImportAt).TotalDays);
-        return new AccountImportStatus(accountId, lastImportAt, coverageEnd, daysSince, rows.Count);
+        // Guard against DateTimeOffset.MinValue stored by older ingest versions that lacked ImportedAt.
+        var validImport = lastImportAt > DateTimeOffset.UnixEpoch ? lastImportAt : (DateTimeOffset?)null;
+        var daysSince = validImport.HasValue ? (int?)Math.Floor((now - validImport.Value).TotalDays) : null;
+        return new AccountImportStatus(accountId, validImport, coverageEnd, daysSince, rows.Count);
     }
 }

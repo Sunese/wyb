@@ -13,6 +13,9 @@
 - M3: Subscription management. Detect recurring charges. List with
   current amount, cadence, annual total. Flag price changes and
   missing expected charges. First "killer feature."
+  - TODO: Subscription detail view — clicking a subscription reveals the
+    full history of charges from that merchant (date + amount per
+    occurrence), making price-change timeline and missed charges obvious.
 
 - M4: Anomaly detection + home dashboard. Per-category baselines
   with seasonality. "What changed this month." The "quiet month"

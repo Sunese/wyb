@@ -31,7 +31,7 @@ export interface ImportStatus {
 }
 
 function ledgerUrl() {
-	const url = env.services__ledger__http__0;
+	const url = env.services__ledger__https__0 || env.services__ledger__http__0;
 	if (!url) error(500, 'ledger service URL not configured');
 	return url;
 }

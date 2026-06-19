@@ -107,4 +107,34 @@ public class TransactionConsumerTests : IAsyncLifetime
         Assert.NotNull(await session.Events.FetchStreamStateAsync(a.DedupKey));
         Assert.NotNull(await session.Events.FetchStreamStateAsync(b.DedupKey));
     }
+
+    [Fact]
+    public async Task CategoryOverridden_UpdatesProjectionAndSetsFlag()
+    {
+        var evt = MakeEvent();
+        await TransactionConsumer.RecordTransactionAsync(_store, evt);
+
+        await using var session = _store.LightweightSession();
+        session.Events.Append(evt.DedupKey, new Wyb.Ledger.Events.CategoryOverridden(evt.DedupKey, TransactionCategory.Beer));
+        await session.SaveChangesAsync();
+
+        var tx = await session.Events.AggregateStreamAsync<Transaction>(evt.DedupKey);
+        Assert.NotNull(tx);
+        Assert.Equal(TransactionCategory.Beer, tx.Category);
+        Assert.True(tx.CategoryOverridden);
+    }
+
+    [Fact]
+    public async Task ImportedAt_IsPreservedInProjection()
+    {
+        var importedAt = new DateTimeOffset(2026, 6, 18, 10, 0, 0, TimeSpan.Zero);
+        var evt = MakeEvent() with { ImportedAt = importedAt };
+
+        await TransactionConsumer.RecordTransactionAsync(_store, evt);
+
+        await using var session = _store.LightweightSession();
+        var tx = await session.Events.AggregateStreamAsync<Transaction>(evt.DedupKey);
+        Assert.NotNull(tx);
+        Assert.Equal(importedAt, tx.ImportedAt);
+    }
 }

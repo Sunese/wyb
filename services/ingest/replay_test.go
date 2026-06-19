@@ -176,6 +176,63 @@ func TestReplayHandler_SetsNonEmptyDedupKey(t *testing.T) {
 	}
 }
 
+func TestReplayHandler_SetsNonEmptyImportedAt(t *testing.T) {
+	rawDir := t.TempDir()
+	copyFile(t, "../../testdata/danskebank_salary_20250101_20251231.csv",
+		filepath.Join(rawDir, "salary.csv"))
+
+	pub := &mockPublisher{}
+	handler := replayHandler(rawDir, pub, otel.Tracer("test"))
+
+	req := httptest.NewRequest(http.MethodPost, "/replay", nil)
+	rec := httptest.NewRecorder()
+	handler(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+
+	pub.mu.Lock()
+	defer pub.mu.Unlock()
+	if len(pub.events) == 0 {
+		t.Fatal("no events published")
+	}
+	for i, ev := range pub.events {
+		if ev.ImportedAt == "" {
+			t.Errorf("event[%d] has empty ImportedAt", i)
+		}
+	}
+	// All events in a single file parse get the same wall-clock ImportedAt.
+	first := pub.events[0].ImportedAt
+	for i, ev := range pub.events[1:] {
+		if ev.ImportedAt != first {
+			t.Errorf("event[%d] ImportedAt %q differs from event[0] %q", i+1, ev.ImportedAt, first)
+		}
+	}
+}
+
+func TestTransactionImportedEvent_JSON_IncludesImportedAt(t *testing.T) {
+	ev := TransactionImportedEvent{
+		DedupKey:       "abc",
+		SchemaVersion:  1,
+		AccountID:      "salary",
+		Date:           "2026-06-18",
+		AmountMinor:    35000,
+		Currency:       "DKK",
+		RawDescription: "NETS",
+		ImportedAt:     "2026-06-18T10:00:00Z",
+	}
+	data, err := json.Marshal(ev)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	var m map[string]any
+	json.Unmarshal(data, &m)
+	if v, ok := m["imported_at"]; !ok || v == "" {
+		t.Errorf("imported_at missing or empty in JSON: %s", data)
+	}
+}
+
 func TestParseFile_HandlesArchivedFilename(t *testing.T) {
 	rawDir := t.TempDir()
 	// Simulate how the watcher archives files: timestamp prefix prepended.

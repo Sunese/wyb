@@ -45,6 +45,9 @@ if (app.Environment.IsDevelopment())
 
 app.MapDefaultEndpoints();
 
+app.MapGet("/categories", () =>
+    Results.Ok(Enum.GetNames<TransactionCategory>().Order()));
+
 app.MapGet("/transactions", async (IDocumentStore store, CancellationToken ct) =>
 {
     await using var session = store.LightweightSession();
@@ -59,6 +62,20 @@ app.MapGet("/transactions/{id}", async (string id, IDocumentStore store, Cancell
     return tx is null ? Results.NotFound() : Results.Ok(tx);
 });
 
+app.MapPatch("/transactions/{id}/category", async (string id, CategoryPatchRequest req, IDocumentStore store, CancellationToken ct) =>
+{
+    if (!Enum.TryParse<TransactionCategory>(req.Category, ignoreCase: true, out var category))
+        return Results.BadRequest($"Unknown category: {req.Category}");
+
+    await using var session = store.LightweightSession();
+    var tx = await session.LoadAsync<Transaction>(id, ct);
+    if (tx is null) return Results.NotFound();
+
+    session.Events.Append(id, new Wyb.Ledger.Events.CategoryOverridden(id, category));
+    await session.SaveChangesAsync(ct);
+    return Results.NoContent();
+});
+
 // Import freshness for the "you haven't imported in N days" nudge. The UI uses this to
 // distinguish a genuinely missing subscription charge from one we simply haven't imported yet.
 app.MapGet("/imports/status", async (IDocumentStore store, CancellationToken ct) =>
@@ -69,3 +86,5 @@ app.MapGet("/imports/status", async (IDocumentStore store, CancellationToken ct)
 });
 
 app.Run();
+
+public sealed record CategoryPatchRequest(string Category);

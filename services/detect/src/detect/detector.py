@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from datetime import date, timedelta
 
 MIN_OCCURRENCES = 2
-REGULARITY_CV_THRESHOLD = 0.30  # coefficient of variation; below this = regular
+REGULARITY_CV_THRESHOLD = 0.30  # coefficient of variation on intervals; below this = regular
 
 # (min_days, max_days, label) — ordered narrow-to-wide so first match wins
 CADENCE_BUCKETS: list[tuple[int, int, str]] = [
@@ -21,8 +21,8 @@ MISSED_TOLERANCE_FACTOR = 0.5  # flag missed if overdue by > 50% of cadence
 
 @dataclass(frozen=True)
 class ChargeRecord:
-    """A single debit from a known merchant, used as detector input."""
-    merchant_name: str
+    """A single debit charge, keyed by raw bank description."""
+    raw_description: str
     amount_minor: int   # negative (debit)
     currency: str
     date: date
@@ -30,7 +30,7 @@ class ChargeRecord:
 
 @dataclass(frozen=True)
 class DetectedSubscription:
-    merchant_name: str
+    raw_description: str
     currency: str
     cadence_days: float
     cadence_label: str
@@ -78,18 +78,18 @@ def detect_subscriptions(
     if data_frontier is None:
         data_frontier = today
 
-    # Only debits from a known merchant.
-    debits = [c for c in charges if c.amount_minor < 0 and c.merchant_name]
+    # Only debits with a non-empty description.
+    debits = [c for c in charges if c.amount_minor < 0 and c.raw_description]
 
-    # Group by (merchant_name, currency).
+    # Group by (raw_description, currency).
     groups: dict[tuple[str, str], list[ChargeRecord]] = {}
     for c in debits:
-        key = (c.merchant_name, c.currency)
+        key = (c.raw_description, c.currency)
         groups.setdefault(key, []).append(c)
 
     subscriptions: list[DetectedSubscription] = []
 
-    for (merchant, currency), group in groups.items():
+    for (raw_description, currency), group in groups.items():
         group = sorted(group, key=lambda c: c.date)
 
         if len(group) < MIN_OCCURRENCES:
@@ -110,6 +110,14 @@ def detect_subscriptions(
             else 0.0
         )
         if cv >= REGULARITY_CV_THRESHOLD:
+            continue
+
+        # Subscriptions have a fixed price (or one price change). Reject groups
+        # where more than one distinct amount appears, unless one amount dominates
+        # (> half the occurrences) — that handles the price-changed case.
+        amounts = [abs(c.amount_minor) for c in group]
+        most_common_amount = max(set(amounts), key=amounts.count)
+        if amounts.count(most_common_amount) <= len(amounts) / 2:
             continue
 
         cadence_label = _classify_cadence(median_interval)
@@ -140,7 +148,7 @@ def detect_subscriptions(
         annual_estimate = round(current_amount * (365.0 / median_interval))
 
         subscriptions.append(DetectedSubscription(
-            merchant_name=merchant,
+            raw_description=raw_description,
             currency=currency,
             cadence_days=round(median_interval, 1),
             cadence_label=cadence_label,

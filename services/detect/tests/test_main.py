@@ -29,7 +29,7 @@ def test_list_subscriptions_returns_rows_sorted_by_annual_estimate(client) -> No
 
     with Session(engine) as db:
         db.add(Subscription(
-            merchant_name="Netflix",
+            raw_description="Netflix",
             currency="DKK",
             cadence_days=30.0,
             cadence_label="monthly",
@@ -46,7 +46,7 @@ def test_list_subscriptions_returns_rows_sorted_by_annual_estimate(client) -> No
             updated_at=now,
         ))
         db.add(Subscription(
-            merchant_name="Spotify",
+            raw_description="Spotify",
             currency="DKK",
             cadence_days=30.0,
             cadence_label="monthly",
@@ -69,7 +69,7 @@ def test_list_subscriptions_returns_rows_sorted_by_annual_estimate(client) -> No
     body = response.json()
     assert len(body) == 2
     # sorted descending by annual_estimate_minor
-    assert body[0]["merchant_name"] == "Netflix"
-    assert body[1]["merchant_name"] == "Spotify"
+    assert body[0]["raw_description"] == "Netflix"
+    assert body[1]["raw_description"] == "Spotify"
     assert body[1]["price_changed"] is True
     assert body[0]["annual_estimate_minor"] == 130800

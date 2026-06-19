@@ -46,6 +46,7 @@ type BankParser interface {
 // registry holds all registered bank parsers.
 var registry = []BankParser{
 	&danskeParser{},
+	&danskeParserWithCategories{},
 }
 
 // ParseFile auto-detects the bank format from file content and parses the file.
@@ -184,6 +185,68 @@ func (d *danskeParser) Parse(r io.Reader, sourceName, accountID string) ([]Row, 
 			AmountMinor: amount,
 			Currency:    "DKK",
 			Description: strings.TrimSpace(record[1]),
+			SourceFile:  sourceName,
+			RowIndex:    rowIndex,
+		})
+	}
+
+	return rows, nil
+}
+
+// ── Danske Bank (with Kategori/Underkategori columns) ────────────────────────
+// Format: Dato;Kategori;Underkategori;Tekst;Beløb;Saldo;Status;Afstemt
+
+type danskeParserWithCategories struct{}
+
+func (d *danskeParserWithCategories) BankName() string { return "danskebank" }
+
+func (d *danskeParserWithCategories) DetectHeader(header []string) bool {
+	if len(header) < 5 {
+		return false
+	}
+	col4 := strings.ToLower(header[4])
+	return strings.EqualFold(header[0], "Dato") &&
+		strings.EqualFold(header[1], "Kategori") &&
+		strings.EqualFold(header[3], "Tekst") &&
+		strings.HasPrefix(col4, "bel") && strings.HasSuffix(col4, "b")
+}
+
+func (d *danskeParserWithCategories) Parse(r io.Reader, sourceName, accountID string) ([]Row, error) {
+	cr := csv.NewReader(r)
+	cr.Comma = ';'
+
+	if _, err := cr.Read(); err != nil {
+		return nil, fmt.Errorf("read header: %w", err)
+	}
+
+	var rows []Row
+	for rowIndex := 0; ; rowIndex++ {
+		record, err := cr.Read()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, fmt.Errorf("row %d: %w", rowIndex, err)
+		}
+		if len(record) < 5 {
+			continue
+		}
+
+		date, err := time.Parse("02.01.2006", strings.TrimSpace(record[0]))
+		if err != nil {
+			return nil, fmt.Errorf("row %d: date %q: %w", rowIndex, record[0], err)
+		}
+		amount, err := parseDanishAmount(record[4])
+		if err != nil {
+			return nil, fmt.Errorf("row %d: amount %q: %w", rowIndex, record[4], err)
+		}
+
+		rows = append(rows, Row{
+			AccountID:   accountID,
+			Date:        date,
+			AmountMinor: amount,
+			Currency:    "DKK",
+			Description: strings.TrimSpace(record[3]),
 			SourceFile:  sourceName,
 			RowIndex:    rowIndex,
 		})

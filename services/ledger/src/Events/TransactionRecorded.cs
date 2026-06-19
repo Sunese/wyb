@@ -9,4 +9,6 @@ public sealed record TransactionRecorded(string DedupKey,
                                          string RawDescription,
                                          DateTimeOffset ImportedAt,
                                          TransactionCategory Category,
-                                         int SchemaVersion);
+                                         int SchemaVersion,
+                                         string? AccountId = null,
+                                         string? MerchantName = null);
