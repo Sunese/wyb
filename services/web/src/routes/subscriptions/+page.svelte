@@ -94,7 +94,9 @@
 					>
 						<td class="py-3 pr-2 text-gray-400 dark:text-gray-500">
 							{#if loadingId === sub.id}
-								<span class="inline-block h-3 w-3 animate-spin rounded-full border border-current border-t-transparent"></span>
+								<span
+									class="inline-block h-3 w-3 animate-spin rounded-full border border-current border-t-transparent"
+								></span>
 							{:else}
 								<span class="text-xs">{expandedId === sub.id ? '▾' : '▸'}</span>
 							{/if}
@@ -152,7 +154,9 @@
 											{#each chargesCache[sub.id] as charge (charge.id)}
 												<tr class="text-gray-600 dark:text-gray-300">
 													<td class="py-0.5 pr-4">{formatDate(charge.charge_date)}</td>
-													<td class="py-0.5 pr-4 text-right tabular-nums">{formatAmount(charge.amount_minor)}</td>
+													<td class="py-0.5 pr-4 text-right tabular-nums"
+														>{formatAmount(charge.amount_minor)}</td
+													>
 												</tr>
 											{/each}
 										</tbody>
