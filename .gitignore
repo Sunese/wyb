@@ -31,8 +31,8 @@ build/
 .vscode/
 *.swp
 
-# app-specific
-data/
+# app-specific — live bank data, never committed (anchored to repo root)
+/data/
 
 # claude
 .claude/worktrees/
